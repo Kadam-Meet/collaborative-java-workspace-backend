@@ -1,0 +1,23 @@
+target/
+*.log
+*.err.log
+.idea/
+.vscode/
+
+# Maven dependencies and local caches
+.m2/
+**/.m2/
+**/target/dependency/
+
+# Maven generated metadata/backups
+dependency-reduced-pom.xml
+release.properties
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+flattened-pom.xml
+
+# Bundled Maven distributions
+apache-maven-*/
+tools/apache-maven-*/
