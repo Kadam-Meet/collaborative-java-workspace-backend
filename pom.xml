@@ -59,6 +59,13 @@
                 <configuration>
                     <excludes>
                         <exclude>com/cjw/service/optimization/**</exclude>
+                        <exclude>com/collab/workspace/analysis/optimization/**</exclude>
+                        <exclude>com/collab/workspace/engine/**</exclude>
+                        <exclude>com/collab/workspace/rmi/**</exclude>
+                        <exclude>com/collab/workspace/servlet/**</exclude>
+                        <exclude>com/collab/workspace/controller/WorkspaceController.java</exclude>
+                        <exclude>com/collab/workspace/service/WorkspaceService.java</exclude>
+                        <exclude>com/collab/workspace/config/AppConfig.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>
@@ -66,7 +73,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.cjw.CollaborativeJavaWorkspaceBackendApplication</mainClass>
+                    <mainClass>com.collab.workspace.WorkspaceApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

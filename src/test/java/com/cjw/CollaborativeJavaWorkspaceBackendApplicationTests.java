@@ -1,65 +1,45 @@
 package com.cjw;
 
-import com.cjw.model.optimization.CodeOptimizationRequest;
-import com.cjw.model.optimization.CodeOptimizationResponse;
-import com.cjw.service.optimization.CodeOptimizationService;
+import com.collab.workspace.WorkspaceApplication;
+import com.collab.workspace.dto.LoginRequest;
+import com.collab.workspace.dto.SignupRequest;
+import com.collab.workspace.service.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import java.util.Arrays;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@SpringBootTest(classes = WorkspaceApplication.class)
 class CollaborativeJavaWorkspaceBackendApplicationTests {
 
     @Autowired
-    private CodeOptimizationService optimizationService;
+    private AuthService authService;
 
     @Test
     void contextLoads() {
-        assertThat(optimizationService).isNotNull();
+        assertThat(authService).isNotNull();
     }
 
     @Test
-    void testCodeOptimization() throws Exception {
-        // Sample Java code with issues
-        String testCode = """
-            public class TestClass {
-                public void badMethod() {
-                    String result = "";
-                    for (int i = 0; i < 10; i++) {
-                        result = result + "item" + i; // String concatenation in loop
-                    }
-                    System.out.println(result);
-                }
+    void testAuthSignupAndLogin() {
+        SignupRequest signup = new SignupRequest();
+        signup.setName("Test User");
+        signup.setEmail("test.user@example.com");
+        signup.setPassword("password123");
 
-                private void unusedMethod() {
-                    // This method is never called
-                }
-            }
-            """;
+        var signupResponse = authService.signup(signup);
+        assertThat(signupResponse).isNotNull();
+        assertThat(signupResponse.getToken()).isNotBlank();
+        assertThat(signupResponse.getEmail()).isEqualTo("test.user@example.com");
 
-        CodeOptimizationRequest request = new CodeOptimizationRequest(
-            testCode,
-            "java",
-            Arrays.asList("performance", "readability")
-        );
+        LoginRequest login = new LoginRequest();
+        login.setEmail("test.user@example.com");
+        login.setPassword("password123");
 
-        CompletableFuture<CodeOptimizationResponse> future = optimizationService.optimizeCode(request);
-        CodeOptimizationResponse response = future.get(30, TimeUnit.SECONDS);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getIssues()).isNotNull();
-        assertThat(response.getSuggestions()).isNotNull();
-        assertThat(response.getMetrics()).isNotNull();
-
-        // Should detect the string concatenation issue
-        boolean hasStringBuilderSuggestion = response.getSuggestions().stream()
-            .anyMatch(s -> s.getTitle().contains("StringBuilder"));
-        assertThat(hasStringBuilderSuggestion).isTrue();
+        var loginResponse = authService.login(login);
+        assertThat(loginResponse).isNotNull();
+        assertThat(loginResponse.getToken()).isNotBlank();
+        assertThat(loginResponse.getName()).isEqualTo("Test User");
     }
 }

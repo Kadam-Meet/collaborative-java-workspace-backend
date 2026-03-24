@@ -1,6 +1,0 @@
-target/
-*.log
-*.err.log
-.idea/
-.vscode/
-java-workspace-backend-backup/
