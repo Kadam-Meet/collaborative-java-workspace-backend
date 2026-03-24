@@ -1,63 +1,67 @@
 package com.collab.workspace.entity;
 
-import java.time.Instant;
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
 
+@Entity
+@Table(name = "users")
 public class User {
 
-	private Long id;
-	private String name;
-	private String email;
-	private String passwordHash;
-	private Instant createdAt;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-	public User() {
-	}
+    private String name;
 
-	public User(Long id, String name, String email, String passwordHash, Instant createdAt) {
-		this.id = id;
-		this.name = name;
-		this.email = email;
-		this.passwordHash = passwordHash;
-		this.createdAt = createdAt;
-	}
+    @Column(unique = true)
+    private String email;
 
-	public Long getId() {
-		return id;
-	}
+    @Column(name = "password_hash")
+    private String passwordHash;
 
-	public void setId(Long id) {
-		this.id = id;
-	}
+    private LocalDateTime createdAt = LocalDateTime.now();
 
-	public String getName() {
-		return name;
-	}
+    @OneToMany(mappedBy = "owner")
+    private List<Room> ownedRooms;
 
-	public void setName(String name) {
-		this.name = name;
-	}
+    @OneToMany(mappedBy = "user")
+    private List<RoomMember> memberships;
 
-	public String getEmail() {
-		return email;
-	}
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-	public void setEmail(String email) {
-		this.email = email;
-	}
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-	public String getPasswordHash() {
-		return passwordHash;
-	}
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 
-	public void setPasswordHash(String passwordHash) {
-		this.passwordHash = passwordHash;
-	}
+    public String getPasswordHash() { return passwordHash; }
+    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
 
-	public Instant getCreatedAt() {
-		return createdAt;
-	}
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
-	public void setCreatedAt(Instant createdAt) {
-		this.createdAt = createdAt;
-	}
+    public List<Room> getOwnedRooms() { return ownedRooms; }
+    public void setOwnedRooms(List<Room> ownedRooms) { this.ownedRooms = ownedRooms; }
+
+    public List<RoomMember> getMemberships() { return memberships; }
+    public void setMemberships(List<RoomMember> memberships) { this.memberships = memberships; }
+
+    // equals & hashCode
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User)) return false;
+        User user = (User) o;
+        return id != null && id.equals(user.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
 }

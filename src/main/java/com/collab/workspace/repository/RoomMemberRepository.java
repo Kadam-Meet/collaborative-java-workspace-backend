@@ -1,5 +1,5 @@
 package com.collab.workspace.repository;
 
-public class FileRepository {
+public class RoomMemberRepository {
     
 }
