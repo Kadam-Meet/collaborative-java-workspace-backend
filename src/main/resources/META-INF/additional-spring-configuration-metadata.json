@@ -1,0 +1,44 @@
+{
+  "properties": [
+    {
+      "name": "backend.events.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the socket event server."
+    },
+    {
+      "name": "backend.events.port",
+      "type": "java.lang.Integer",
+      "description": "Port used by the socket event server."
+    },
+    {
+      "name": "backend.rmi.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables RMI integration."
+    },
+    {
+      "name": "backend.rmi.host",
+      "type": "java.lang.String",
+      "description": "Host used for RMI server binding."
+    },
+    {
+      "name": "backend.rmi.port",
+      "type": "java.lang.Integer",
+      "description": "Port used by the RMI server."
+    },
+    {
+      "name": "backend.rmi.service-name",
+      "type": "java.lang.String",
+      "description": "RMI service binding name."
+    },
+    {
+      "name": "app.jwt.secret",
+      "type": "java.lang.String",
+      "description": "JWT signing secret."
+    },
+    {
+      "name": "app.jwt.expiration-seconds",
+      "type": "java.lang.Long",
+      "description": "JWT token expiration time in seconds."
+    }
+  ]
+}

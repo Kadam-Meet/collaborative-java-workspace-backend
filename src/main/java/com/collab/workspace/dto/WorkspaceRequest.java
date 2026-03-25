@@ -10,6 +10,11 @@ public class WorkspaceRequest {
     private Map<String, String> files = new LinkedHashMap<>();
     private boolean applySuggestedFixes;
 
+    // Room/workspace management fields
+    private String roomName;
+    private String roomCode;
+    private String memberEmail;
+
     public String getWorkspaceName() {
         return workspaceName;
     }
@@ -40,5 +45,29 @@ public class WorkspaceRequest {
 
     public void setApplySuggestedFixes(boolean applySuggestedFixes) {
         this.applySuggestedFixes = applySuggestedFixes;
+    }
+
+    public String getRoomName() {
+        return roomName;
+    }
+
+    public void setRoomName(String roomName) {
+        this.roomName = roomName;
+    }
+
+    public String getRoomCode() {
+        return roomCode;
+    }
+
+    public void setRoomCode(String roomCode) {
+        this.roomCode = roomCode;
+    }
+
+    public String getMemberEmail() {
+        return memberEmail;
+    }
+
+    public void setMemberEmail(String memberEmail) {
+        this.memberEmail = memberEmail;
     }
 }

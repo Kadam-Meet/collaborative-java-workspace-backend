@@ -1,0 +1,29 @@
+# Build output
+target/
+
+# Local Maven/tool archives
+maven.zip
+apache-maven-3.9.6/
+tools/apache-maven-3.9.9/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and crash dumps
+*.log
+hs_err_pid*
+replay_pid*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
