@@ -11,6 +11,7 @@ import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.socket.SocketEventServer;
 import com.collab.workspace.util.FileUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,17 +35,26 @@ public class RoomWorkspaceService {
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final WorkspaceFileRepository workspaceFileRepository;
+    private final ActivityEventService activityEventService;
+    private final NotificationService notificationService;
+    private final SocketEventServer socketEventServer;
 
     public RoomWorkspaceService(
         RoomRepository roomRepository,
         RoomMemberRepository roomMemberRepository,
         UserRepository userRepository,
-        WorkspaceFileRepository workspaceFileRepository
+        WorkspaceFileRepository workspaceFileRepository,
+        ActivityEventService activityEventService,
+        NotificationService notificationService,
+        SocketEventServer socketEventServer
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
         this.userRepository = userRepository;
         this.workspaceFileRepository = workspaceFileRepository;
+        this.activityEventService = activityEventService;
+        this.notificationService = notificationService;
+        this.socketEventServer = socketEventServer;
     }
 
     @Transactional
@@ -61,6 +71,13 @@ public class RoomWorkspaceService {
 
         addMemberIfMissing(room, currentUser);
         createDefaultFile(room, currentUser);
+        activityEventService.record(
+            room,
+            currentUser,
+            "ROOM_CREATED",
+            "Room created",
+            "Created room " + room.getRoomName() + " (" + room.getRoomCode() + ")"
+        );
 
         return toRoomSummary(room);
     }
@@ -73,7 +90,24 @@ public class RoomWorkspaceService {
         Room room = roomRepository.findByRoomCodeIgnoreCase(roomCode.trim())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Room not found"));
 
+        boolean wasMember = roomMemberRepository.existsByRoom_IdAndUser_Id(room.getId(), currentUser.getId());
         addMemberIfMissing(room, currentUser);
+        if (!wasMember) {
+            activityEventService.record(
+                room,
+                currentUser,
+                "ROOM_JOINED",
+                "Joined room",
+                currentUser.getName() + " joined " + room.getRoomName()
+            );
+            socketEventServer.broadcastRoomEvent(room, "ROOM_JOINED", Map.of(
+                "actorEmail", currentUser.getEmail(),
+                "actorName", currentUser.getName(),
+                "roomId", room.getId(),
+                "roomCode", room.getRoomCode()
+            ));
+            socketEventServer.broadcastPresence(room);
+        }
         return toRoomSummary(room);
     }
 
@@ -117,8 +151,36 @@ public class RoomWorkspaceService {
         String memberEmail = required(request.getMemberEmail(), "memberEmail is required");
         User member = getUserByEmail(memberEmail);
         addMemberIfMissing(room, member);
+        activityEventService.record(
+            room,
+            currentUser,
+            "MEMBER_ADDED",
+            "Member added",
+            member.getEmail() + " added to " + room.getRoomName()
+        );
+        notificationService.notifyUser(
+            member,
+            "ROOM_INVITE",
+            "Added to room",
+            "You were added to " + room.getRoomName() + " by " + currentUser.getName(),
+            room
+        );
+        socketEventServer.broadcastRoomEvent(room, "MEMBER_ADDED", Map.of(
+            "actorEmail", currentUser.getEmail(),
+            "memberEmail", member.getEmail(),
+            "memberName", member.getName()
+        ));
+        socketEventServer.broadcastPresence(room);
 
         return toRoomSummary(room);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getRoomActivity(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        return activityEventService.listRoomActivity(roomId);
     }
 
     @Transactional
@@ -150,6 +212,27 @@ public class RoomWorkspaceService {
         }
 
         roomMemberRepository.save(member);
+        activityEventService.record(
+            room,
+            currentUser,
+            "MEMBER_PERMISSIONS_UPDATED",
+            "Member permissions updated",
+            member.getUser().getEmail() + " permissions were updated"
+        );
+        notificationService.notifyUser(
+            member.getUser(),
+            "MEMBER_PERMISSIONS_UPDATED",
+            "Permissions updated",
+            "Your room permissions were updated in " + room.getRoomName(),
+            room
+        );
+        socketEventServer.broadcastRoomEvent(room, "MEMBER_PERMISSIONS_UPDATED", Map.of(
+            "actorEmail", currentUser.getEmail(),
+            "memberEmail", member.getUser().getEmail(),
+            "canEditFiles", member.isCanEditFiles(),
+            "canSaveVersions", member.isCanSaveVersions(),
+            "canRevertVersions", member.isCanRevertVersions()
+        ));
         return toMemberSummary(room, member);
     }
 
@@ -198,6 +281,20 @@ public class RoomWorkspaceService {
         file.setUpdatedBy(currentUser);
         file.setUpdatedAt(LocalDateTime.now());
         workspaceFileRepository.save(file);
+        activityEventService.record(
+            room,
+            currentUser,
+            "FILE_CREATED",
+            "File created",
+            file.getFilePath() + " was created"
+        );
+        socketEventServer.broadcastRoomEvent(room, "FILE_CREATED", Map.of(
+            "fileId", file.getId(),
+            "filePath", file.getFilePath(),
+            "content", file.getContent(),
+            "updatedAt", file.getUpdatedAt().toString(),
+            "actorEmail", currentUser.getEmail()
+        ));
 
         Map<String, Object> response = toFileSummary(file);
         response.put("content", file.getContent());
@@ -233,6 +330,20 @@ public class RoomWorkspaceService {
         file.setUpdatedBy(currentUser);
         file.setUpdatedAt(LocalDateTime.now());
         workspaceFileRepository.save(file);
+        activityEventService.record(
+            room,
+            currentUser,
+            "FILE_UPDATED",
+            "File updated",
+            file.getFilePath() + " was updated"
+        );
+        socketEventServer.broadcastRoomEvent(room, "FILE_UPDATED", Map.of(
+            "fileId", file.getId(),
+            "filePath", file.getFilePath(),
+            "content", file.getContent(),
+            "updatedAt", file.getUpdatedAt().toString(),
+            "actorEmail", currentUser.getEmail()
+        ));
 
         Map<String, Object> response = toFileSummary(file);
         response.put("content", file.getContent());
@@ -293,6 +404,20 @@ public class RoomWorkspaceService {
         file.setUpdatedBy(currentUser);
         file.setUpdatedAt(LocalDateTime.now());
         workspaceFileRepository.save(file);
+        activityEventService.record(
+            room,
+            currentUser,
+            "FILE_UPLOADED",
+            "File uploaded",
+            file.getFilePath() + " was uploaded"
+        );
+        socketEventServer.broadcastRoomEvent(room, "FILE_UPLOADED", Map.of(
+            "fileId", file.getId(),
+            "filePath", file.getFilePath(),
+            "content", file.getContent(),
+            "updatedAt", file.getUpdatedAt().toString(),
+            "actorEmail", currentUser.getEmail()
+        ));
 
         Map<String, Object> response = toFileSummary(file);
         response.put("content", file.getContent());

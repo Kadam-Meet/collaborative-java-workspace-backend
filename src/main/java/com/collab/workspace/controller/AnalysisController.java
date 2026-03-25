@@ -4,7 +4,9 @@ import com.collab.workspace.analysis.OptimizationResult;
 import com.collab.workspace.analysis.model.AnalysisResult;
 import com.collab.workspace.analysis.model.FullReviewResponse;
 import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.service.AnalysisJobService;
 import com.collab.workspace.service.AnalysisService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +24,11 @@ import java.util.Map;
 public class AnalysisController {
 
 	private final AnalysisService analysisService;
+	private final AnalysisJobService analysisJobService;
 
-	public AnalysisController(AnalysisService analysisService) {
+	public AnalysisController(AnalysisService analysisService, AnalysisJobService analysisJobService) {
 		this.analysisService = analysisService;
+		this.analysisJobService = analysisJobService;
 	}
 
 	@PostMapping("/optimizer/java")
@@ -40,6 +44,30 @@ public class AnalysisController {
 	@PostMapping("/analyzer/java/full")
 	public ResponseEntity<FullReviewResponse> fullReview(@RequestBody WorkspaceRequest request) {
 		return ResponseEntity.ok(analysisService.fullReview(request));
+	}
+
+	@PostMapping("/analyzer/java/jobs")
+	public ResponseEntity<Map<String, Object>> queueFullReview(@RequestBody WorkspaceRequest request, HttpServletRequest httpRequest) {
+		return ResponseEntity.accepted().body(analysisJobService.enqueue(getEmail(httpRequest), request));
+	}
+
+	@GetMapping("/analyzer/java/jobs/{jobId}")
+	public ResponseEntity<Map<String, Object>> getJobStatus(
+		@org.springframework.web.bind.annotation.PathVariable String jobId,
+		HttpServletRequest httpRequest
+	) {
+		return ResponseEntity.ok(analysisJobService.getJobStatus(getEmail(httpRequest), jobId));
+	}
+
+	private String getEmail(HttpServletRequest request) {
+		Object email = request.getAttribute("authUserEmail");
+		if (email == null) {
+			throw new org.springframework.web.server.ResponseStatusException(
+				org.springframework.http.HttpStatus.UNAUTHORIZED,
+				"Unauthenticated request"
+			);
+		}
+		return email.toString();
 	}
 
 	@GetMapping("/meta/rules")

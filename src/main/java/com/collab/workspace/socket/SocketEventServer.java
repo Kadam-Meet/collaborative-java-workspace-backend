@@ -1,83 +1,136 @@
 package com.collab.workspace.socket;
 
-import com.collab.workspace.service.EventPublisher;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Value;
+import com.collab.workspace.entity.Room;
+import com.collab.workspace.entity.User;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.Set;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 @Component
 public class SocketEventServer {
 
-    private final EventPublisher eventPublisher;
-    private final boolean enabled;
-    private final int port;
-    private final Set<PrintWriter> clients = ConcurrentHashMap.newKeySet();
-    private final Consumer<String> broadcaster = this::broadcast;
-    private ServerSocket serverSocket;
-    private Thread acceptThread;
+    private final ConcurrentHashMap<Long, ConcurrentHashMap<String, ClientSession>> roomSessions = new ConcurrentHashMap<>();
 
-    public SocketEventServer(
-        EventPublisher eventPublisher,
-        @Value("${backend.events.enabled:true}") boolean enabled,
-        @Value("${backend.events.port:9091}") int port
-    ) {
-        this.eventPublisher = eventPublisher;
-        this.enabled = enabled;
-        this.port = port;
+    public SseEmitter subscribe(Room room, User user) {
+        SseEmitter emitter = new SseEmitter(0L);
+        String sessionId = UUID.randomUUID().toString();
+
+        roomSessions
+            .computeIfAbsent(room.getId(), ignored -> new ConcurrentHashMap<>())
+            .put(sessionId, new ClientSession(emitter, user));
+
+        emitter.onCompletion(() -> removeSession(room.getId(), sessionId));
+        emitter.onTimeout(() -> removeSession(room.getId(), sessionId));
+        emitter.onError(error -> removeSession(room.getId(), sessionId));
+
+        sendToEmitter(emitter, "CONNECTED", Map.of(
+            "type", "CONNECTED",
+            "roomId", room.getId(),
+            "roomCode", room.getRoomCode(),
+            "sessionId", sessionId,
+            "createdAt", OffsetDateTime.now().toString()
+        ));
+
+        broadcastPresence(room);
+        return emitter;
     }
 
-    @PostConstruct
-    public void start() {
-        if (!enabled) {
+    public void broadcastRoomEvent(Room room, String eventType, Map<String, Object> payload) {
+        if (room == null) {
             return;
         }
 
-        eventPublisher.register(broadcaster);
-        acceptThread = new Thread(this::runServer, "java-workspace-event-server");
-        acceptThread.setDaemon(true);
-        acceptThread.start();
+        ConcurrentHashMap<String, ClientSession> sessions = roomSessions.get(room.getId());
+        if (sessions == null || sessions.isEmpty()) {
+            return;
+        }
+
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("type", eventType);
+        envelope.put("roomId", room.getId());
+        envelope.put("createdAt", OffsetDateTime.now().toString());
+        envelope.put("payload", payload == null ? Map.of() : payload);
+
+        for (ClientSession session : sessions.values()) {
+            sendToEmitter(session.emitter, eventType, envelope);
+        }
     }
 
-    private void runServer() {
-        try (ServerSocket socket = new ServerSocket(port)) {
-            this.serverSocket = socket;
-            while (!Thread.currentThread().isInterrupted()) {
-                Socket client = socket.accept();
-                PrintWriter writer = new PrintWriter(client.getOutputStream(), true);
-                clients.add(writer);
-                writer.println("CONNECTED|java-workspace-events");
+    public void broadcastPresence(Room room) {
+        if (room == null) {
+            return;
+        }
+        List<Map<String, Object>> activeUsers = getActiveUsers(room.getId());
+        broadcastRoomEvent(room, "ACTIVE_USERS", Map.of("users", activeUsers));
+    }
+
+    private List<Map<String, Object>> getActiveUsers(Long roomId) {
+        ConcurrentHashMap<String, ClientSession> sessions = roomSessions.get(roomId);
+        if (sessions == null || sessions.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Map<String, Object>> uniqueUsers = new LinkedHashMap<>();
+        for (ClientSession session : sessions.values()) {
+            User user = session.user;
+            if (user == null || user.getId() == null) {
+                continue;
             }
-        } catch (IOException ignored) {
+            uniqueUsers.put(user.getId(), Map.of(
+                "id", user.getId(),
+                "name", user.getName(),
+                "email", user.getEmail()
+            ));
+        }
+        return new ArrayList<>(uniqueUsers.values());
+    }
+
+    private void removeSession(Long roomId, String sessionId) {
+        ConcurrentHashMap<String, ClientSession> sessions = roomSessions.get(roomId);
+        if (sessions == null) {
+            return;
+        }
+
+        sessions.remove(sessionId);
+        if (sessions.isEmpty()) {
+            roomSessions.remove(roomId);
+            return;
+        }
+
+        List<Map<String, Object>> activeUsers = getActiveUsers(roomId);
+        for (ClientSession session : sessions.values()) {
+            sendToEmitter(session.emitter, "ACTIVE_USERS", Map.of(
+                "type", "ACTIVE_USERS",
+                "roomId", roomId,
+                "createdAt", OffsetDateTime.now().toString(),
+                "payload", Map.of("users", activeUsers)
+            ));
         }
     }
 
-    private void broadcast(String payload) {
-        clients.removeIf(PrintWriter::checkError);
-        clients.forEach(writer -> writer.println(payload));
+    private void sendToEmitter(SseEmitter emitter, String eventName, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(data));
+        } catch (IOException ex) {
+            emitter.completeWithError(ex);
+        }
     }
 
-    @PreDestroy
-    public void stop() {
-        eventPublisher.unregister(broadcaster);
-        if (acceptThread != null) {
-            acceptThread.interrupt();
+    private static class ClientSession {
+        private final SseEmitter emitter;
+        private final User user;
+
+        private ClientSession(SseEmitter emitter, User user) {
+            this.emitter = emitter;
+            this.user = user;
         }
-        if (serverSocket != null) {
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
-        }
-        clients.forEach(PrintWriter::close);
-        clients.clear();
     }
 }
