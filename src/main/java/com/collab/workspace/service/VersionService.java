@@ -10,6 +10,7 @@ import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.VersionRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.socket.SocketEventServer;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,19 +30,28 @@ public class VersionService {
 	private final RoomRepository roomRepository;
 	private final RoomMemberRepository roomMemberRepository;
 	private final UserRepository userRepository;
+	private final ActivityEventService activityEventService;
+	private final NotificationService notificationService;
+	private final SocketEventServer socketEventServer;
 
 	public VersionService(
 		VersionRepository versionRepository,
 		WorkspaceFileRepository workspaceFileRepository,
 		RoomRepository roomRepository,
 		RoomMemberRepository roomMemberRepository,
-		UserRepository userRepository
+		UserRepository userRepository,
+		ActivityEventService activityEventService,
+		NotificationService notificationService,
+		SocketEventServer socketEventServer
 	) {
 		this.versionRepository = versionRepository;
 		this.workspaceFileRepository = workspaceFileRepository;
 		this.roomRepository = roomRepository;
 		this.roomMemberRepository = roomMemberRepository;
 		this.userRepository = userRepository;
+		this.activityEventService = activityEventService;
+		this.notificationService = notificationService;
+		this.socketEventServer = socketEventServer;
 	}
 
 	@Transactional
@@ -70,6 +80,28 @@ public class VersionService {
 		version.setSavedBy(currentUser);
 		version.setCreatedAt(LocalDateTime.now());
 		version = versionRepository.save(version);
+		activityEventService.record(
+			room,
+			currentUser,
+			"VERSION_SAVED",
+			"Version saved",
+			file.getFilePath() + " saved as v" + version.getVersionNumber()
+		);
+		notificationService.notifyRoomMembers(
+			room,
+			currentUser,
+			"VERSION_SAVED",
+			"Version saved",
+			currentUser.getName() + " saved " + file.getFilePath() + " as v" + version.getVersionNumber(),
+			false
+		);
+		socketEventServer.broadcastRoomEvent(room, "VERSION_SAVED", Map.of(
+			"fileId", file.getId(),
+			"filePath", file.getFilePath(),
+			"versionNumber", version.getVersionNumber(),
+			"actorEmail", currentUser.getEmail(),
+			"createdAt", version.getCreatedAt().toString()
+		));
 
 		Map<String, Object> response = toVersionSummary(version);
 		if (request != null && request.getVersionMessage() != null && !request.getVersionMessage().isBlank()) {
@@ -116,6 +148,30 @@ public class VersionService {
 		snapshot.setSavedBy(currentUser);
 		snapshot.setCreatedAt(LocalDateTime.now());
 		versionRepository.save(snapshot);
+		activityEventService.record(
+			room,
+			currentUser,
+			"VERSION_REVERTED",
+			"Version reverted",
+			file.getFilePath() + " reverted to v" + version.getVersionNumber()
+		);
+		notificationService.notifyRoomMembers(
+			room,
+			currentUser,
+			"VERSION_REVERTED",
+			"Version reverted",
+			currentUser.getName() + " reverted " + file.getFilePath() + " to v" + version.getVersionNumber(),
+			false
+		);
+		socketEventServer.broadcastRoomEvent(room, "VERSION_REVERTED", Map.of(
+			"fileId", file.getId(),
+			"filePath", file.getFilePath(),
+			"revertedFromVersion", version.getVersionNumber(),
+			"newVersion", snapshot.getVersionNumber(),
+			"content", file.getContent(),
+			"updatedAt", file.getUpdatedAt().toString(),
+			"actorEmail", currentUser.getEmail()
+		));
 
 		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("fileId", file.getId());
@@ -176,12 +232,6 @@ public class VersionService {
 
 		if (!isOwner && !isMember) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room");
-		}
-	}
-
-	private void ensureOwner(Room room, User user) {
-		if (room.getOwner() == null || !room.getOwner().getId().equals(user.getId())) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only room owner can manage this action");
 		}
 	}
 

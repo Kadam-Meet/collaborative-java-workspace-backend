@@ -21,8 +21,13 @@ public class RoomMember {
 
     private LocalDateTime joinedAt = LocalDateTime.now();
 
+    @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean canEditFiles = true;
+
+    @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean canSaveVersions = true;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean canRevertVersions = false;
 
     public RoomMemberId getId() { return id; }

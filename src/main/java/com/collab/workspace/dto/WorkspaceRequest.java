@@ -20,6 +20,7 @@ public class WorkspaceRequest {
 
     private String versionMessage;
     private String expectedUpdatedAt;
+    private Boolean notifyOnCompletion;
     private Boolean canEditFiles;
     private Boolean canSaveVersions;
     private Boolean canRevertVersions;
@@ -118,6 +119,14 @@ public class WorkspaceRequest {
 
     public void setExpectedUpdatedAt(String expectedUpdatedAt) {
         this.expectedUpdatedAt = expectedUpdatedAt;
+    }
+
+    public Boolean getNotifyOnCompletion() {
+        return notifyOnCompletion;
+    }
+
+    public void setNotifyOnCompletion(Boolean notifyOnCompletion) {
+        this.notifyOnCompletion = notifyOnCompletion;
     }
 
     public Boolean getCanEditFiles() {

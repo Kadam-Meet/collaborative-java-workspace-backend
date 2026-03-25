@@ -3,8 +3,6 @@ package com.collab.workspace.service;
 import com.collab.workspace.entity.AnalysisReport;
 import com.collab.workspace.entity.Room;
 import com.collab.workspace.entity.User;
-import com.collab.workspace.entity.Version;
-import com.collab.workspace.entity.WorkspaceFile;
 import com.collab.workspace.repository.AnalysisReportRepository;
 import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
@@ -16,9 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +28,7 @@ public class DashboardService {
 	private final WorkspaceFileRepository workspaceFileRepository;
 	private final VersionRepository versionRepository;
 	private final AnalysisReportRepository analysisReportRepository;
+	private final ActivityEventService activityEventService;
 
 	public DashboardService(
 		UserRepository userRepository,
@@ -40,7 +36,8 @@ public class DashboardService {
 		RoomMemberRepository roomMemberRepository,
 		WorkspaceFileRepository workspaceFileRepository,
 		VersionRepository versionRepository,
-		AnalysisReportRepository analysisReportRepository
+		AnalysisReportRepository analysisReportRepository,
+		ActivityEventService activityEventService
 	) {
 		this.userRepository = userRepository;
 		this.roomRepository = roomRepository;
@@ -48,6 +45,7 @@ public class DashboardService {
 		this.workspaceFileRepository = workspaceFileRepository;
 		this.versionRepository = versionRepository;
 		this.analysisReportRepository = analysisReportRepository;
+		this.activityEventService = activityEventService;
 	}
 
 	@Transactional(readOnly = true)
@@ -75,7 +73,7 @@ public class DashboardService {
 			: riskSource.getRiskLevel();
 
 		List<Map<String, Object>> roomSummaries = rooms.stream().map(this::toRoomSummary).toList();
-		List<Map<String, Object>> recentActivity = buildRecentActivity(rooms, roomIds);
+		List<Map<String, Object>> recentActivity = activityEventService.listUserActivity(roomIds);
 
 		Map<String, Object> totals = new LinkedHashMap<>();
 		totals.put("rooms", totalRooms);
@@ -94,66 +92,6 @@ public class DashboardService {
 		response.put("rooms", roomSummaries);
 		response.put("recentActivity", recentActivity);
 		return response;
-	}
-
-	private List<Map<String, Object>> buildRecentActivity(List<Room> rooms, List<Long> roomIds) {
-		if (roomIds.isEmpty()) {
-			return List.of();
-		}
-
-		List<Map<String, Object>> activity = new ArrayList<>();
-
-		List<Version> versions = versionRepository.findTop20ByFile_Room_IdInOrderByCreatedAtDesc(roomIds);
-		for (Version version : versions) {
-			if (version.getFile() == null || version.getFile().getRoom() == null) {
-				continue;
-			}
-			Map<String, Object> entry = new LinkedHashMap<>();
-			entry.put("type", "VERSION_SAVED");
-			entry.put("title", "Version v" + version.getVersionNumber() + " saved");
-			entry.put("description", version.getFile().getFilePath() + " in " + version.getFile().getRoom().getRoomName());
-			entry.put("createdAt", version.getCreatedAt());
-			activity.add(entry);
-		}
-
-		List<AnalysisReport> reports = analysisReportRepository.findTop20ByFile_Room_IdInOrderByCreatedAtDesc(roomIds);
-		if (reports.isEmpty()) {
-			reports = analysisReportRepository.findTop20ByOrderByCreatedAtDesc();
-		}
-		for (AnalysisReport report : reports) {
-			WorkspaceFile file = report.getFile();
-			Map<String, Object> entry = new LinkedHashMap<>();
-			entry.put("type", "ANALYSIS_RUN");
-			entry.put("title", "Analysis completed");
-			String description = file != null && file.getRoom() != null
-				? file.getFilePath() + " score " + report.getPerformanceScore()
-				: "Workspace score " + report.getPerformanceScore();
-			entry.put("description", description);
-			entry.put("createdAt", report.getCreatedAt());
-			activity.add(entry);
-		}
-
-		for (Room room : rooms.stream().limit(10).toList()) {
-			Map<String, Object> entry = new LinkedHashMap<>();
-			entry.put("type", "ROOM_JOINED");
-			entry.put("title", "Room available");
-			entry.put("description", room.getRoomName() + " (" + room.getRoomCode() + ")");
-			entry.put("createdAt", room.getCreatedAt());
-			activity.add(entry);
-		}
-
-		return activity.stream()
-			.sorted(Comparator.comparing(this::activityTime).reversed())
-			.limit(20)
-			.toList();
-	}
-
-	private LocalDateTime activityTime(Map<String, Object> entry) {
-		Object value = entry.get("createdAt");
-		if (value instanceof LocalDateTime dateTime) {
-			return dateTime;
-		}
-		return LocalDateTime.MIN;
 	}
 
 	private Map<String, Object> toRoomSummary(Room room) {

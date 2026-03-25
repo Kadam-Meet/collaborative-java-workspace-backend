@@ -35,12 +35,21 @@ public class JwtFilter extends OncePerRequestFilter {
 		}
 
 		String header = request.getHeader("Authorization");
-		if (header == null || !header.startsWith("Bearer ")) {
+		String token = null;
+		if (header != null && header.startsWith("Bearer ")) {
+			token = header.substring(7);
+		} else {
+			String queryToken = request.getParameter("access_token");
+			if (queryToken != null && !queryToken.isBlank()) {
+				token = queryToken;
+			}
+		}
+
+		if (token == null || token.isBlank()) {
 			unauthorized(response, "Missing bearer token");
 			return;
 		}
 
-		String token = header.substring(7);
 		if (!jwtUtil.isValid(token)) {
 			unauthorized(response, "Invalid or expired token");
 			return;
