@@ -20,6 +20,12 @@ public class WorkspaceRequest {
 
     private String versionMessage;
     private String expectedUpdatedAt;
+    private Long fileId;
+    private Integer startLine;
+    private Integer startColumn;
+    private Integer endLine;
+    private Integer endColumn;
+    private Boolean typing;
     private Boolean canEditFiles;
     private Boolean canSaveVersions;
     private Boolean canRevertVersions;
@@ -118,6 +124,54 @@ public class WorkspaceRequest {
 
     public void setExpectedUpdatedAt(String expectedUpdatedAt) {
         this.expectedUpdatedAt = expectedUpdatedAt;
+    }
+
+    public Long getFileId() {
+        return fileId;
+    }
+
+    public void setFileId(Long fileId) {
+        this.fileId = fileId;
+    }
+
+    public Integer getStartLine() {
+        return startLine;
+    }
+
+    public void setStartLine(Integer startLine) {
+        this.startLine = startLine;
+    }
+
+    public Integer getStartColumn() {
+        return startColumn;
+    }
+
+    public void setStartColumn(Integer startColumn) {
+        this.startColumn = startColumn;
+    }
+
+    public Integer getEndLine() {
+        return endLine;
+    }
+
+    public void setEndLine(Integer endLine) {
+        this.endLine = endLine;
+    }
+
+    public Integer getEndColumn() {
+        return endColumn;
+    }
+
+    public void setEndColumn(Integer endColumn) {
+        this.endColumn = endColumn;
+    }
+
+    public Boolean getTyping() {
+        return typing;
+    }
+
+    public void setTyping(Boolean typing) {
+        this.typing = typing;
     }
 
     public Boolean getCanEditFiles() {

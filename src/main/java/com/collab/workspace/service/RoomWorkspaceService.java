@@ -11,11 +11,13 @@ import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.socket.SocketEventServer;
 import com.collab.workspace.util.FileUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -34,17 +36,20 @@ public class RoomWorkspaceService {
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final WorkspaceFileRepository workspaceFileRepository;
+    private final SocketEventServer socketEventServer;
 
     public RoomWorkspaceService(
         RoomRepository roomRepository,
         RoomMemberRepository roomMemberRepository,
         UserRepository userRepository,
-        WorkspaceFileRepository workspaceFileRepository
+        WorkspaceFileRepository workspaceFileRepository,
+        SocketEventServer socketEventServer
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
         this.userRepository = userRepository;
         this.workspaceFileRepository = workspaceFileRepository;
+        this.socketEventServer = socketEventServer;
     }
 
     @Transactional
@@ -75,6 +80,38 @@ public class RoomWorkspaceService {
 
         addMemberIfMissing(room, currentUser);
         return toRoomSummary(room);
+    }
+
+    @Transactional(readOnly = true)
+    public SseEmitter subscribeRoomEvents(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        return socketEventServer.subscribe(room, currentUser);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> publishRealtimePresence(String currentUserEmail, Long roomId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        if (request.getFileId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fileId is required for realtime presence");
+        }
+
+        socketEventServer.broadcastRoomEvent(room, "CURSOR_UPDATE", Map.of(
+            "actorEmail", currentUser.getEmail(),
+            "actorName", currentUser.getName(),
+            "fileId", request.getFileId(),
+            "startLine", request.getStartLine() == null ? 1 : request.getStartLine(),
+            "startColumn", request.getStartColumn() == null ? 1 : request.getStartColumn(),
+            "endLine", request.getEndLine() == null ? 1 : request.getEndLine(),
+            "endColumn", request.getEndColumn() == null ? 1 : request.getEndColumn(),
+            "typing", request.getTyping() != null && request.getTyping()
+        ));
+
+        return Map.of("status", "OK");
     }
 
     @Transactional(readOnly = true)

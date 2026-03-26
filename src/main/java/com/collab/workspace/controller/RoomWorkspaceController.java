@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
@@ -95,6 +96,25 @@ public class RoomWorkspaceController {
         HttpServletRequest httpRequest
     ) {
         return ResponseEntity.ok(roomWorkspaceService.getRoomFiles(getEmail(httpRequest), roomId));
+    }
+
+    @GetMapping(value = "/rooms/{roomId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter roomEvents(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        return roomWorkspaceService.subscribeRoomEvents(getEmail(httpRequest), roomId);
+    }
+
+    @PostMapping("/rooms/{roomId}/presence")
+    public ResponseEntity<Map<String, Object>> publishPresence(
+        @PathVariable Long roomId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.accepted().body(
+            roomWorkspaceService.publishRealtimePresence(getEmail(httpRequest), roomId, request)
+        );
     }
 
     @GetMapping("/rooms/{roomId}/files/{fileId}")
