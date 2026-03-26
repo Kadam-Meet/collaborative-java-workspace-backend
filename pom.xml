@@ -18,7 +18,7 @@
     <description>Backend for Java code optimization and analysis in the collaborative workspace</description>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
     </properties>
 
     <dependencies>
