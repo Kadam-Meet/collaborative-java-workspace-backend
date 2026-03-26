@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "if [ -f target/collaborative-java-workspace-backend-1.0.0.jar ]; then java -Dserver.port=$PORT -jar target/collaborative-java-workspace-backend-1.0.0.jar; elif [ -f BE/target/collaborative-java-workspace-backend-1.0.0.jar ]; then java -Dserver.port=$PORT -jar BE/target/collaborative-java-workspace-backend-1.0.0.jar; else echo 'jar not found'; exit 1; fi",
-    "healthcheckPath": "/actuator/health",
+    "healthcheckPath": "/actuator/health/liveness",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
