@@ -32,7 +32,7 @@ protected void doFilterInternal(HttpServletRequest request,
         throws ServletException, IOException {
 
     // ✅ ADD CORS HEADERS (CRITICAL)
-    response.setHeader("Access-Control-Allow-Origin", "https://collaborative-java-workspace-fronte-lemon.vercel.app"); // change later to your Vercel URL
+    response.setHeader("Access-Control-Allow-Origin", request.getHeader("Origin")); // change later to your Vercel URL
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     response.setHeader("Access-Control-Allow-Credentials", "true");
