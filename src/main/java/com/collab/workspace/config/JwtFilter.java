@@ -13,65 +13,83 @@ import java.util.Set;
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
-	private static final Set<String> PUBLIC_PATHS = Set.of(
-		"/api/auth/login",
-		"/api/auth/signup",
-		"/api/v1/meta/health"
-	);
+private static final Set<String> PUBLIC_PATHS = Set.of(
+        "/api/auth/login",
+        "/api/auth/signup",
+        "/api/v1/meta/health"
+);
 
-	private final JwtUtil jwtUtil;
+private final JwtUtil jwtUtil;
 
-	public JwtFilter(JwtUtil jwtUtil) {
-		this.jwtUtil = jwtUtil;
-	}
+public JwtFilter(JwtUtil jwtUtil) {
+    this.jwtUtil = jwtUtil;
+}
 
-	@Override
-	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-		throws ServletException, IOException {
-		String path = request.getRequestURI();
-		if ("OPTIONS".equalsIgnoreCase(request.getMethod()) || isPublic(path)) {
-			filterChain.doFilter(request, response);
-			return;
-		}
+@Override
+protected void doFilterInternal(HttpServletRequest request,
+                                HttpServletResponse response,
+                                FilterChain filterChain)
+        throws ServletException, IOException {
 
-		String header = request.getHeader("Authorization");
-		String token = null;
-		if (header != null && header.startsWith("Bearer ")) {
-			token = header.substring(7);
-		} else {
-			String queryToken = request.getParameter("access_token");
-			if (queryToken != null && !queryToken.isBlank()) {
-				token = queryToken;
-			}
-		}
+    // ✅ ADD CORS HEADERS (CRITICAL)
+    response.setHeader("Access-Control-Allow-Origin", "*"); // change later to your Vercel URL
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    response.setHeader("Access-Control-Allow-Credentials", "true");
 
-		if (token == null || token.isBlank()) {
-			unauthorized(response, "Missing bearer token");
-			return;
-		}
+    String path = request.getRequestURI();
 
-		if (!jwtUtil.isValid(token)) {
-			unauthorized(response, "Invalid or expired token");
-			return;
-		}
+    // ✅ Allow preflight requests
+    if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+        response.setStatus(HttpServletResponse.SC_OK);
+        return;
+    }
 
-		String email = jwtUtil.extractEmail(token);
-		if (email == null || email.isBlank()) {
-			unauthorized(response, "Invalid token payload");
-			return;
-		}
+    // ✅ Allow public routes
+    if (isPublic(path)) {
+        filterChain.doFilter(request, response);
+        return;
+    }
 
-		request.setAttribute("authUserEmail", email);
-		filterChain.doFilter(request, response);
-	}
+    String header = request.getHeader("Authorization");
+    String token = null;
 
-	private boolean isPublic(String path) {
-		return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
-	}
+    if (header != null && header.startsWith("Bearer ")) {
+        token = header.substring(7);
+    } else {
+        String queryToken = request.getParameter("access_token");
+        if (queryToken != null && !queryToken.isBlank()) {
+            token = queryToken;
+        }
+    }
 
-	private void unauthorized(HttpServletResponse response, String message) throws IOException {
-		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-		response.setContentType("application/json");
-		response.getWriter().write("{\"error\":\"" + message + "\"}");
-	}
+    if (token == null || token.isBlank()) {
+        unauthorized(response, "Missing bearer token");
+        return;
+    }
+
+    if (!jwtUtil.isValid(token)) {
+        unauthorized(response, "Invalid or expired token");
+        return;
+    }
+
+    String email = jwtUtil.extractEmail(token);
+    if (email == null || email.isBlank()) {
+        unauthorized(response, "Invalid token payload");
+        return;
+    }
+
+    request.setAttribute("authUserEmail", email);
+    filterChain.doFilter(request, response);
+}
+
+private boolean isPublic(String path) {
+    return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
+}
+
+private void unauthorized(HttpServletResponse response, String message) throws IOException {
+    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    response.setContentType("application/json");
+    response.getWriter().write("{\"error\":\"" + message + "\"}");
+}
 }
