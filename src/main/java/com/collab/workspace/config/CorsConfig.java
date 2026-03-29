@@ -14,12 +14,11 @@ public WebMvcConfigurer corsConfigurer() {
         @Override
         public void addCorsMappings(CorsRegistry registry) {
             registry.addMapping("/**")
-                    .allowedOrigins("https://collaborative-java-workspace-fronte-lemon.vercel.app")
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedOriginPatterns("*") // ✅ FIX (instead of allowedOrigins("*"))
+                    .allowedMethods("*")
                     .allowedHeaders("*")
                     .allowCredentials(true);
         }
     };
 }
-
 }
