@@ -34,6 +34,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
+        <!-- Added comment: This dependency enables Spring Boot Actuator, including the /health endpoint for Railway health checks as discussed. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -93,10 +94,10 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <excludes>
-                        <exclude>com/cjw/service/optimization/**</exclude>
-                        <exclude>com/collab/workspace/analysis/optimization/**</exclude>
-                        <exclude>com/collab/workspace/rmi/**</exclude>
-                        <exclude>com/collab/workspace/servlet/**</exclude>
+                        <exclude>com/cjw/service/optimization/</exclude>
+                        <exclude>com/collab/workspace/analysis/optimization/</exclude>
+                        <exclude>com/collab/workspace/rmi/</exclude>
+                        <exclude>com/collab/workspace/servlet/</exclude>
                         <exclude>com/collab/workspace/controller/WorkspaceController.java</exclude>
                         <exclude>com/collab/workspace/service/WorkspaceService.java</exclude>
                         <exclude>com/collab/workspace/config/AppConfig.java</exclude>
