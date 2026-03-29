@@ -14,8 +14,8 @@ public WebMvcConfigurer corsConfigurer() {
         @Override
         public void addCorsMappings(CorsRegistry registry) {
             registry.addMapping("/**")
-                    .allowedOrigins("https://collaborative-java-workspace-fronte-lemon.vercel.app")
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedOriginPatterns("https://*.vercel.app")
+                    .allowedMethods("*")
                     .allowedHeaders("*")
                     .allowCredentials(true);
         }
