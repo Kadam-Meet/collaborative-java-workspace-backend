@@ -20,7 +20,7 @@ public class SecurityConfig {
 		FilterRegistrationBean<JwtFilter> registration = new FilterRegistrationBean<>();
 		registration.setFilter(jwtFilter);
 		registration.addUrlPatterns("/api/*");
-		registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
 		return registration;
 	}
 }
