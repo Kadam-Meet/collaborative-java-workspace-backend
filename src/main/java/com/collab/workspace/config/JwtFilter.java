@@ -31,12 +31,6 @@ protected void doFilterInternal(HttpServletRequest request,
                                 FilterChain filterChain)
         throws ServletException, IOException {
 
-    // ✅ ADD CORS HEADERS (CRITICAL)
-    response.setHeader("Access-Control-Allow-Origin", request.getHeader("Origin")); // change later to your Vercel URL
-    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    response.setHeader("Access-Control-Allow-Credentials", "true");
-
     String path = request.getRequestURI();
 
     // ✅ Allow preflight requests

@@ -1,5 +1,6 @@
 package com.collab.workspace.controller;
 
+import com.collab.workspace.dto.DashboardResponse;
 import com.collab.workspace.service.DashboardService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,7 @@ public DashboardController(DashboardService dashboardService) {
 }
 
 @GetMapping
-public ResponseEntity<Map<String, Object>> getDashboard(HttpServletRequest request) {
+public ResponseEntity<?> getDashboard(HttpServletRequest request) {
 
     // ✅ Extract email from JwtFilter
     String email = (String) request.getAttribute("authUserEmail");
@@ -30,7 +31,7 @@ public ResponseEntity<Map<String, Object>> getDashboard(HttpServletRequest reque
         ));
     }
 
-    Map<String, Object> response = dashboardService.getDashboard(email);
+    DashboardResponse response = dashboardService.getDashboard(email);
 
     return ResponseEntity.ok(response);
 }

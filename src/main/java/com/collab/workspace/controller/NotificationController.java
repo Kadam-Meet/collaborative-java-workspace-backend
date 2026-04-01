@@ -1,9 +1,9 @@
 package com.collab.workspace.controller;
 
+import com.collab.workspace.dto.NotificationResponse;
 import com.collab.workspace.service.NotificationService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/api/notifications")
 public class NotificationController {
 
@@ -26,19 +25,23 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> listNotifications(
-        @RequestParam(defaultValue = "false") boolean unreadOnly,
-        @RequestParam(defaultValue = "20") int limit,
-        HttpServletRequest request
+    @RequestParam(defaultValue = "false") boolean unreadOnly,
+    @RequestParam(defaultValue = "20") int limit,
+    HttpServletRequest request
     ) {
-        return ResponseEntity.ok(notificationService.listNotifications(getEmail(request), unreadOnly, limit));
+    return ResponseEntity.ok(
+    notificationService.listNotifications(getEmail(request), unreadOnly, limit)
+    );
     }
 
     @PutMapping("/{notificationId}/read")
-    public ResponseEntity<Map<String, Object>> markRead(
-        @PathVariable Long notificationId,
-        HttpServletRequest request
+    public ResponseEntity<NotificationResponse> markRead(
+    @PathVariable Long notificationId,
+    HttpServletRequest request
     ) {
-        return ResponseEntity.ok(notificationService.markRead(getEmail(request), notificationId));
+    return ResponseEntity.ok(
+    notificationService.markRead(getEmail(request), notificationId)
+    );
     }
 
     @PutMapping("/read-all")
