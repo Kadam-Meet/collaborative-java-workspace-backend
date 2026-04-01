@@ -95,7 +95,7 @@
                 <configuration>
                     <excludes>
                         <exclude>com/cjw/service/optimization/</exclude>
-                        <exclude>com/collab/workspace/analysis/optimization/</exclude>
+                        <exclude>com/collab/workspace/analysis/optimization/CodeOptimizationService.java</exclude>
                         <exclude>com/collab/workspace/rmi/</exclude>
                         <exclude>com/collab/workspace/servlet/</exclude>
                         <exclude>com/collab/workspace/controller/WorkspaceController.java</exclude>

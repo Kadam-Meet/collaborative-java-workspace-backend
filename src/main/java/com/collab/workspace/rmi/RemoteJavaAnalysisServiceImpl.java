@@ -1,8 +1,8 @@
 package com.collab.workspace.rmi;
 
 import com.collab.workspace.analysis.model.FullReviewResponse;
-import com.collab.workspace.dto.JavaWorkspaceRequest;
-import com.collab.workspace.service.JavaWorkspaceReviewService;
+import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.service.WorkspaceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 

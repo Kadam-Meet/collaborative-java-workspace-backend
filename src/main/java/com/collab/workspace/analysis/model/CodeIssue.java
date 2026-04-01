@@ -8,7 +8,10 @@ public class CodeIssue {
     private String filePath;
     private long line;
     private String title;
+    private String ruleName;
+    private String category;
     private String explanation;
+    private String fixSuggestion;
     private String suggestedFix;
     private String fixedSnippet;
     private String impact;
@@ -61,6 +64,22 @@ public class CodeIssue {
         this.title = title;
     }
 
+    public String getRuleName() {
+        return ruleName;
+    }
+
+    public void setRuleName(String ruleName) {
+        this.ruleName = ruleName;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
     public String getExplanation() {
         return explanation;
     }
@@ -69,12 +88,26 @@ public class CodeIssue {
         this.explanation = explanation;
     }
 
+    public String getFixSuggestion() {
+        return fixSuggestion;
+    }
+
+    public void setFixSuggestion(String fixSuggestion) {
+        this.fixSuggestion = fixSuggestion;
+        if (this.suggestedFix == null || this.suggestedFix.isBlank()) {
+            this.suggestedFix = fixSuggestion;
+        }
+    }
+
     public String getSuggestedFix() {
         return suggestedFix;
     }
 
     public void setSuggestedFix(String suggestedFix) {
         this.suggestedFix = suggestedFix;
+        if (this.fixSuggestion == null || this.fixSuggestion.isBlank()) {
+            this.fixSuggestion = suggestedFix;
+        }
     }
 
     public String getFixedSnippet() {

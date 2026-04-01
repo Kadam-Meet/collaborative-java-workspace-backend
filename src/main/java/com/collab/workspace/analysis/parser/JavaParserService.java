@@ -1,9 +1,148 @@
 package com.collab.workspace.analysis.parser;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.Problem;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.CallableDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.stmt.CatchClause;
+import com.github.javaparser.ast.stmt.DoStmt;
+import com.github.javaparser.ast.stmt.ForEachStmt;
+import com.github.javaparser.ast.stmt.ForStmt;
+import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.SwitchEntry;
+import com.github.javaparser.ast.stmt.TryStmt;
+import com.github.javaparser.ast.stmt.WhileStmt;
+
+import java.util.List;
+import java.util.Optional;
 
 public class JavaParserService {
+
+	private final JavaParser javaParser = new JavaParser();
+
+	public ParsedJavaSource parseSource(String filePath, String content) {
+		ParseResult<CompilationUnit> parseResult = javaParser.parse(content);
+		Optional<CompilationUnit> compilationUnit = parseResult.getResult();
+		FileStructure structure = buildFileStructure(content, compilationUnit);
+		List<String> parserMessages = parseResult.getProblems().stream()
+			.map(Problem::getMessage)
+			.toList();
+
+		return new ParsedJavaSource(filePath, content, compilationUnit, structure, parserMessages);
+	}
+
+	private FileStructure buildFileStructure(String content, Optional<CompilationUnit> compilationUnit) {
+		String[] lines = content.split("\\R", -1);
+		int blankLines = 0;
+		int commentLines = 0;
+		for (String raw : lines) {
+			String line = raw.trim();
+			if (line.isBlank()) {
+				blankLines++;
+			}
+			if (line.startsWith("//") || line.startsWith("/*") || line.startsWith("*")) {
+				commentLines++;
+			}
+		}
+
+		if (compilationUnit.isEmpty()) {
+			return new FileStructure(
+				lines.length,
+				blankLines,
+				commentLines,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			);
+		}
+
+		CompilationUnit unit = compilationUnit.orElseThrow();
+		int classCount = unit.findAll(TypeDeclaration.class).size();
+		int methodCount = unit.findAll(CallableDeclaration.class).size();
+		int loopCount = unit.findAll(ForStmt.class).size()
+			+ unit.findAll(ForEachStmt.class).size()
+			+ unit.findAll(WhileStmt.class).size()
+			+ unit.findAll(DoStmt.class).size();
+		int conditionalCount = unit.findAll(IfStmt.class).size() + unit.findAll(SwitchEntry.class).size();
+		int tryCatchCount = unit.findAll(TryStmt.class).size() + unit.findAll(CatchClause.class).size();
+		int ioOperationCount = unit.findAll(com.github.javaparser.ast.expr.MethodCallExpr.class).stream()
+			.map(methodCallExpr -> methodCallExpr.getNameAsString().toLowerCase())
+			.filter(name -> name.equals("read") || name.equals("write") || name.equals("readallbytes") || name.equals("readstring"))
+			.toList()
+			.size();
+		int networkOperationCount = unit.findAll(com.github.javaparser.ast.expr.ObjectCreationExpr.class).stream()
+			.map(objectCreationExpr -> objectCreationExpr.getType().getNameAsString())
+			.filter(name -> name.contains("Socket") || name.contains("HttpClient") || name.contains("URLConnection"))
+			.toList()
+			.size();
+
+		int totalMethodLength = 0;
+		int maxMethodLength = 0;
+		for (CallableDeclaration<?> callable : unit.findAll(CallableDeclaration.class)) {
+			if (callable.getBegin().isEmpty() || callable.getEnd().isEmpty()) {
+				continue;
+			}
+			int methodLength = callable.getEnd().get().line - callable.getBegin().get().line + 1;
+			totalMethodLength += methodLength;
+			maxMethodLength = Math.max(maxMethodLength, methodLength);
+		}
+
+		return new FileStructure(
+			lines.length,
+			blankLines,
+			commentLines,
+			classCount,
+			methodCount,
+			loopCount,
+			conditionalCount,
+			tryCatchCount,
+			ioOperationCount,
+			networkOperationCount,
+			computeMaxNestingDepth(unit),
+			totalMethodLength,
+			maxMethodLength
+		);
+	}
+
+	private int computeMaxNestingDepth(CompilationUnit unit) {
+		int max = 0;
+		for (com.github.javaparser.ast.stmt.Statement statement : unit.findAll(com.github.javaparser.ast.stmt.Statement.class)) {
+			int depth = 0;
+			Optional<com.github.javaparser.ast.Node> current = statement.getParentNode();
+			while (current.isPresent()) {
+				com.github.javaparser.ast.Node node = current.get();
+				if (node instanceof IfStmt
+					|| node instanceof ForStmt
+					|| node instanceof ForEachStmt
+					|| node instanceof WhileStmt
+					|| node instanceof DoStmt
+					|| node instanceof TryStmt) {
+					depth++;
+				}
+				current = node.getParentNode();
+			}
+			max = Math.max(max, depth);
+		}
+		return max;
+	}
+
+	public record ParsedJavaSource(
+		String filePath,
+		String content,
+		Optional<CompilationUnit> compilationUnit,
+		FileStructure structure,
+		List<String> parserMessages
+	) {
+	}
 
 	public record FileStructure(
 		int totalLines,
@@ -20,108 +159,5 @@ public class JavaParserService {
 		int totalMethodLength,
 		int maxMethodLength
 	) {
-	}
-
-	private static final Pattern METHOD_PATTERN = Pattern.compile(
-		"(public|protected|private|static|final|synchronized|native|abstract|\\s)+[\\w<>\\[\\]]+\\s+(\\w+)\\s*\\([^;]*\\)\\s*\\{"
-	);
-
-	public FileStructure parse(String content) {
-		String[] lines = content.split("\\R", -1);
-		int blankLines = 0;
-		int commentLines = 0;
-		for (String raw : lines) {
-			String line = raw.trim();
-			if (line.isBlank()) {
-				blankLines++;
-			}
-			if (line.startsWith("//") || line.startsWith("/*") || line.startsWith("*")) {
-				commentLines++;
-			}
-		}
-
-		int classCount = countMatches(content, "\\b(class|interface|record|enum)\\b");
-		int methodCount = 0;
-		int totalMethodLength = 0;
-		int maxMethodLength = 0;
-
-		Matcher matcher = METHOD_PATTERN.matcher(content);
-		while (matcher.find()) {
-			methodCount++;
-			int startBraceIndex = content.indexOf('{', matcher.end() - 1);
-			int methodLength = estimateBlockLength(content, startBraceIndex);
-			totalMethodLength += methodLength;
-			maxMethodLength = Math.max(maxMethodLength, methodLength);
-		}
-
-		return new FileStructure(
-			lines.length,
-			blankLines,
-			commentLines,
-			classCount,
-			methodCount,
-			countMatches(content, "\\b(for|while|do)\\b"),
-			countMatches(content, "\\b(if|switch|case)\\b"),
-			countMatches(content, "\\b(try|catch)\\b"),
-			countMatches(content, "\\b(Files\\.|FileInputStream|FileOutputStream|BufferedReader|BufferedWriter|read\\(|write\\()"),
-			countMatches(content, "\\b(Socket|ServerSocket|HttpClient|URLConnection|DatagramSocket|connect\\()"),
-			computeMaxNestingDepth(content),
-			totalMethodLength,
-			maxMethodLength
-		);
-	}
-
-	private int countMatches(String content, String regex) {
-		Matcher matcher = Pattern.compile(regex).matcher(content);
-		int count = 0;
-		while (matcher.find()) {
-			count++;
-		}
-		return count;
-	}
-
-	private int computeMaxNestingDepth(String content) {
-		int depth = 0;
-		int max = 0;
-		for (char value : content.toCharArray()) {
-			if (value == '{') {
-				depth++;
-				max = Math.max(max, depth);
-			} else if (value == '}') {
-				depth = Math.max(0, depth - 1);
-			}
-		}
-		return max;
-	}
-
-	private int estimateBlockLength(String content, int openingBraceIndex) {
-		if (openingBraceIndex < 0 || openingBraceIndex >= content.length()) {
-			return 0;
-		}
-		int depth = 0;
-		int endIndex = content.length() - 1;
-		for (int i = openingBraceIndex; i < content.length(); i++) {
-			char value = content.charAt(i);
-			if (value == '{') {
-				depth++;
-			} else if (value == '}') {
-				depth--;
-				if (depth == 0) {
-					endIndex = i;
-					break;
-				}
-			}
-		}
-		return lineNumberAt(content, endIndex) - lineNumberAt(content, openingBraceIndex) + 1;
-	}
-
-	private int lineNumberAt(String content, int index) {
-		int line = 1;
-		for (int i = 0; i < Math.min(index, content.length()); i++) {
-			if (content.charAt(i) == '\n') {
-				line++;
-			}
-		}
-		return line;
 	}
 }

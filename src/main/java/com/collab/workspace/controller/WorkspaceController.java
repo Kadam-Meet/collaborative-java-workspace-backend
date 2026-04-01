@@ -3,10 +3,9 @@ package com.collab.workspace.controller;
 import com.collab.workspace.analysis.model.AnalysisResult;
 import com.collab.workspace.analysis.model.FullReviewResponse;
 import com.collab.workspace.analysis.model.OptimizationResult;
-import com.collab.workspace.dto.JavaWorkspaceRequest;
-import com.collab.workspace.service.JavaWorkspaceReviewService;
+import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.service.WorkspaceService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +19,7 @@ import java.util.Map;
 public class WorkspaceController {
 
     private final WorkspaceService reviewService;
-
+    
     public WorkspaceController(WorkspaceService reviewService) {
         this.reviewService = reviewService;
     }

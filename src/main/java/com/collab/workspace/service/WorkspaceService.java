@@ -1,26 +1,22 @@
 package com.collab.workspace.service;
 
+import com.collab.workspace.analysis.AnalysisEngine;
 import com.collab.workspace.analysis.model.AnalysisResult;
 import com.collab.workspace.analysis.model.FullReviewResponse;
 import com.collab.workspace.analysis.model.OptimizationResult;
-import com.collab.workspace.dto.JavaWorkspaceRequest;
-import com.collab.workspace.engine.JavaCompilerSupport;
-import com.collab.workspace.engine.JavaHeuristicAnalyzer;
-import com.collab.workspace.engine.WorkspaceMaterializer;
+import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.engine.rules.RuleRegistry;
 import com.collab.workspace.repository.ReportRepository;
 
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.file.Path;
 import java.util.Map;
 
 @Service
 public class WorkspaceService {
 
-    private final WorkspaceMaterializer materializer = new WorkspaceMaterializer();
-    private final JavaCompilerSupport compilerSupport = new JavaCompilerSupport();
-    private final JavaHeuristicAnalyzer analyzer = new JavaHeuristicAnalyzer();
+    private final AnalysisEngine analysisEngine = new AnalysisEngine();
+    private final RuleRegistry ruleRegistry = new RuleRegistry();
     private final ReportRepository reportStore;
     private final EventPublisher eventPublisher;
 
@@ -31,18 +27,9 @@ public class WorkspaceService {
 
     public OptimizationResult optimize(WorkspaceRequest request) {
         validate(request);
-        Path workspaceRoot = null;
-        try {
-            workspaceRoot = materializer.materialize(request);
-            var compileResult = compilerSupport.inspect(workspaceRoot);
-            OptimizationResult result = analyzer.optimize(request, compileResult.issues());
-            eventPublisher.publish("OPTIMIZATION", "Optimization completed for " + request.getWorkspaceName());
-            return result;
-        } catch (IOException ex) {
-            throw new IllegalStateException("Unable to materialize Java workspace for optimization", ex);
-        } finally {
-            materializer.deleteQuietly(workspaceRoot);
-        }
+        OptimizationResult result = analysisEngine.optimize(request);
+        eventPublisher.publish("OPTIMIZATION", "Optimization completed for " + request.getWorkspaceName());
+        return result;
     }
 
     public AnalysisResult analyze(WorkspaceRequest request) {
@@ -50,7 +37,7 @@ public class WorkspaceService {
     }
 
     public AnalysisResult analyze(WorkspaceRequest request, OptimizationResult optimizationResult) {
-        AnalysisResult result = analyzer.analyze(request, optimizationResult);
+        AnalysisResult result = analysisEngine.analyze(request, optimizationResult);
         eventPublisher.publish("ANALYSIS", "Analysis completed for " + request.getWorkspaceName());
         return result;
     }
@@ -67,14 +54,7 @@ public class WorkspaceService {
     public Map<String, Object> rules() {
         return Map.of(
             "supportedLanguage", "java",
-            "optimizerRules", java.util.List.of(
-                "compiler error detection",
-                "deep nesting detection",
-                "long method detection",
-                "broad catch detection",
-                "empty catch detection",
-                "console logging hints"
-            ),
+            "optimizerRules", ruleRegistry.describeRules(),
             "analysisMetrics", java.util.List.of(
                 "cyclomatic complexity",
                 "nesting depth",

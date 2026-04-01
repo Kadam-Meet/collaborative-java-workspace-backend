@@ -4,6 +4,7 @@ import com.collab.workspace.analysis.OptimizationResult;
 import com.collab.workspace.analysis.model.AnalysisResult;
 import com.collab.workspace.analysis.model.FullReviewResponse;
 import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.engine.rules.RuleRegistry;
 import com.collab.workspace.service.AnalysisJobService;
 import com.collab.workspace.service.AnalysisService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +24,7 @@ public class AnalysisController {
 
 	private final AnalysisService analysisService;
 	private final AnalysisJobService analysisJobService;
+	private final RuleRegistry ruleRegistry = new RuleRegistry();
 
 	public AnalysisController(AnalysisService analysisService, AnalysisJobService analysisJobService) {
 		this.analysisService = analysisService;
@@ -72,13 +74,7 @@ public class AnalysisController {
 	public ResponseEntity<Map<String, Object>> rules() {
 		return ResponseEntity.ok(Map.of(
 			"supportedLanguage", "java",
-			"optimizerRules", List.of(
-				"deep nesting detection",
-				"broad catch detection",
-				"empty catch detection",
-				"console logging hints",
-				"loop concatenation warnings"
-			),
+			"optimizerRules", ruleRegistry.describeRules(),
 			"analysisMetrics", List.of(
 				"cyclomatic complexity",
 				"nesting depth",
