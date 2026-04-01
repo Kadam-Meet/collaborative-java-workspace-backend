@@ -9,17 +9,24 @@ import com.collab.workspace.analysis.model.FullReviewResponse;
 import com.collab.workspace.analysis.model.Severity;
 import com.collab.workspace.analysis.parser.JavaParserService;
 import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.engine.JavaCompilerSupport;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class AnalysisEngine {
 
 	private final JavaParserService parserService = new JavaParserService();
 	private final ComplexityCalculator complexityCalculator = new ComplexityCalculator();
 	private final IssueDetector issueDetector = new IssueDetector();
+	private final JavaCompilerSupport compilerSupport = new JavaCompilerSupport();
 
 	public OptimizationResult optimize(WorkspaceRequest request) {
 		OptimizationResult optimization = new OptimizationResult();
@@ -27,9 +34,19 @@ public class AnalysisEngine {
 		optimization.setAnalyzedAt(Instant.now());
 		optimization.setOptimizedFiles(new LinkedHashMap<>(request.getFiles()));
 
-		List<CodeIssue> issues = new ArrayList<>();
+		List<CodeIssue> issues = new ArrayList<>(collectCompilerIssues(request));
+		Set<String> existingKeys = new HashSet<>();
+		for (CodeIssue issue : issues) {
+			existingKeys.add(issueKey(issue));
+		}
+
 		for (var entry : request.getFiles().entrySet()) {
-			issues.addAll(issueDetector.detect(entry.getKey(), entry.getValue()));
+			for (CodeIssue issue : issueDetector.detect(entry.getKey(), entry.getValue())) {
+				String key = issueKey(issue);
+				if (existingKeys.add(key)) {
+					issues.add(issue);
+				}
+			}
 		}
 
 		optimization.setIssues(issues);
@@ -101,6 +118,57 @@ public class AnalysisEngine {
 		OptimizationResult optimization = optimize(request);
 		AnalysisResult analysis = analyze(request, optimization);
 		return new FullReviewResponse(optimization, analysis);
+	}
+
+	private List<CodeIssue> collectCompilerIssues(WorkspaceRequest request) {
+		Path workspaceRoot = null;
+		try {
+			workspaceRoot = Files.createTempDirectory("analysis-workspace-");
+			for (var entry : request.getFiles().entrySet()) {
+				Path filePath = workspaceRoot.resolve(entry.getKey());
+				Path parent = filePath.getParent();
+				if (parent != null) {
+					Files.createDirectories(parent);
+				}
+				Files.writeString(filePath, entry.getValue());
+			}
+
+			return new ArrayList<>(compilerSupport.inspect(workspaceRoot).issues());
+		} catch (IOException exception) {
+			return new ArrayList<>();
+		} finally {
+			deleteQuietly(workspaceRoot);
+		}
+	}
+
+	private void deleteQuietly(Path root) {
+		if (root == null) {
+			return;
+		}
+
+		try (var paths = Files.walk(root)) {
+			paths.sorted((left, right) -> right.getNameCount() - left.getNameCount())
+				.forEach(path -> {
+					try {
+						Files.deleteIfExists(path);
+					} catch (IOException ignored) {
+						// Ignore temp cleanup failures.
+					}
+				});
+		} catch (IOException ignored) {
+			// Ignore temp cleanup failures.
+		}
+	}
+
+	private String issueKey(CodeIssue issue) {
+		return String.join(
+			"::",
+			issue.getFilePath() == null ? "" : issue.getFilePath(),
+			String.valueOf(issue.getLine()),
+			issue.getType() == null ? "" : issue.getType().name(),
+			issue.getTitle() == null ? "" : issue.getTitle(),
+			issue.getExplanation() == null ? "" : issue.getExplanation()
+		);
 	}
 
 	private String buildSummary(List<CodeIssue> issues) {
