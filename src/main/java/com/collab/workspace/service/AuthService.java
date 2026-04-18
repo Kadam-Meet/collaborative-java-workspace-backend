@@ -39,11 +39,14 @@ public class AuthService {
 		user.setName(request.getName().trim());
 		user.setEmail(email);
 		user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+		user.setHeadline("Collaborative Java builder");
+		user.setBio("Tell your teammates what you are building and how you like to work.");
+		user.setAccentColor("emerald");
 		user.setCreatedAt(LocalDateTime.now());
 		userRepository.save(user);
 
 		String token = jwtUtil.generateToken(email);
-		return new AuthResponse(token, "Bearer", user.getName(), user.getEmail());
+		return toAuthResponse(user, token);
 	}
 
 	public AuthResponse login(LoginRequest request) {
@@ -63,13 +66,13 @@ public class AuthService {
 		}
 
 		String token = jwtUtil.generateToken(email);
-		return new AuthResponse(token, "Bearer", user.getName(), user.getEmail());
+		return toAuthResponse(user, token);
 	}
 
 	public AuthResponse me(String email) {
 		User user = userRepository.findByEmailIgnoreCase(email)
 			.orElseThrow(() -> new IllegalArgumentException("User not found"));
-		return new AuthResponse(null, "Bearer", user.getName(), user.getEmail());
+		return toAuthResponse(user, null);
 	}
 
 	public AuthResponse updateMe(String email, WorkspaceRequest request) {
@@ -80,12 +83,44 @@ public class AuthService {
 			user.setName(request.getName().trim());
 		}
 
+		if (request != null && request.getHeadline() != null) {
+			user.setHeadline(trimToNull(request.getHeadline(), 120));
+		}
+
+		if (request != null && request.getBio() != null) {
+			user.setBio(trimToNull(request.getBio(), 500));
+		}
+
+		if (request != null && request.getLocation() != null) {
+			user.setLocation(trimToNull(request.getLocation(), 120));
+		}
+
+		if (request != null && request.getAccentColor() != null && !request.getAccentColor().isBlank()) {
+			user.setAccentColor(request.getAccentColor().trim().toLowerCase());
+		}
+
 		if (request != null && request.getPassword() != null && !request.getPassword().isBlank()) {
 			user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
 		}
 
+		if (request != null && request.getProfilePublic() != null) {
+			user.setProfilePublic(request.getProfilePublic());
+		}
+
+		if (request != null && request.getEmailNotifications() != null) {
+			user.setEmailNotifications(request.getEmailNotifications());
+		}
+
+		if (request != null && request.getWorkspaceDigest() != null) {
+			user.setWorkspaceDigest(request.getWorkspaceDigest());
+		}
+
+		if (request != null && request.getFocusModeEnabled() != null) {
+			user.setFocusModeEnabled(request.getFocusModeEnabled());
+		}
+
 		userRepository.save(user);
-		return new AuthResponse(null, "Bearer", user.getName(), user.getEmail());
+		return toAuthResponse(user, null);
 	}
 
 	public void deleteMe(String email) {
@@ -108,6 +143,34 @@ public class AuthService {
 
 	private boolean isLegacySha256Match(String rawPassword, String storedHash) {
 		return sha256(rawPassword).equalsIgnoreCase(storedHash);
+	}
+
+	private AuthResponse toAuthResponse(User user, String token) {
+		return new AuthResponse(
+			token,
+			"Bearer",
+			user.getName(),
+			user.getEmail(),
+			user.getHeadline(),
+			user.getBio(),
+			user.getLocation(),
+			user.getAccentColor(),
+			user.isProfilePublic(),
+			user.isEmailNotifications(),
+			user.isWorkspaceDigest(),
+			user.isFocusModeEnabled()
+		);
+	}
+
+	private String trimToNull(String value, int maxLength) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 	}
 
 	private String sha256(String raw) {

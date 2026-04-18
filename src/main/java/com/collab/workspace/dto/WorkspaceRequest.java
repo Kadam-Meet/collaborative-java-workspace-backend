@@ -21,6 +21,10 @@ public class WorkspaceRequest {
     private String content;
     private String name;
     private String password;
+    private String headline;
+    private String bio;
+    private String location;
+    private String accentColor;
 
     private String versionMessage;
     private String expectedUpdatedAt;
@@ -34,6 +38,10 @@ public class WorkspaceRequest {
     private Boolean canEditFiles;
     private Boolean canSaveVersions;
     private Boolean canRevertVersions;
+    private Boolean profilePublic;
+    private Boolean emailNotifications;
+    private Boolean workspaceDigest;
+    private Boolean focusModeEnabled;
 
     public String getWorkspaceName() {
         return workspaceName;
@@ -147,6 +155,38 @@ public class WorkspaceRequest {
         this.password = password;
     }
 
+    public String getHeadline() {
+        return headline;
+    }
+
+    public void setHeadline(String headline) {
+        this.headline = headline;
+    }
+
+    public String getBio() {
+        return bio;
+    }
+
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
+
+    public String getLocation() {
+        return location;
+    }
+
+    public void setLocation(String location) {
+        this.location = location;
+    }
+
+    public String getAccentColor() {
+        return accentColor;
+    }
+
+    public void setAccentColor(String accentColor) {
+        this.accentColor = accentColor;
+    }
+
     public String getVersionMessage() {
         return versionMessage;
     }
@@ -241,5 +281,37 @@ public class WorkspaceRequest {
 
     public void setCanRevertVersions(Boolean canRevertVersions) {
         this.canRevertVersions = canRevertVersions;
+    }
+
+    public Boolean getProfilePublic() {
+        return profilePublic;
+    }
+
+    public void setProfilePublic(Boolean profilePublic) {
+        this.profilePublic = profilePublic;
+    }
+
+    public Boolean getEmailNotifications() {
+        return emailNotifications;
+    }
+
+    public void setEmailNotifications(Boolean emailNotifications) {
+        this.emailNotifications = emailNotifications;
+    }
+
+    public Boolean getWorkspaceDigest() {
+        return workspaceDigest;
+    }
+
+    public void setWorkspaceDigest(Boolean workspaceDigest) {
+        this.workspaceDigest = workspaceDigest;
+    }
+
+    public Boolean getFocusModeEnabled() {
+        return focusModeEnabled;
+    }
+
+    public void setFocusModeEnabled(Boolean focusModeEnabled) {
+        this.focusModeEnabled = focusModeEnabled;
     }
 }

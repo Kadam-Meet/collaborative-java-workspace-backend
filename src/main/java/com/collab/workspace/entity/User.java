@@ -21,6 +21,26 @@ public class User {
     @Column(name = "password_hash")
     private String passwordHash;
 
+    @Column(length = 120)
+    private String headline;
+
+    @Column(length = 500)
+    private String bio;
+
+    @Column(length = 120)
+    private String location;
+
+    @Column(length = 32)
+    private String accentColor = "emerald";
+
+    private boolean profilePublic = true;
+
+    private boolean emailNotifications = true;
+
+    private boolean workspaceDigest = false;
+
+    private boolean focusModeEnabled = false;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @OneToMany(mappedBy = "owner")
@@ -41,6 +61,30 @@ public class User {
 
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+
+    public String getHeadline() { return headline; }
+    public void setHeadline(String headline) { this.headline = headline; }
+
+    public String getBio() { return bio; }
+    public void setBio(String bio) { this.bio = bio; }
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+
+    public String getAccentColor() { return accentColor; }
+    public void setAccentColor(String accentColor) { this.accentColor = accentColor; }
+
+    public boolean isProfilePublic() { return profilePublic; }
+    public void setProfilePublic(boolean profilePublic) { this.profilePublic = profilePublic; }
+
+    public boolean isEmailNotifications() { return emailNotifications; }
+    public void setEmailNotifications(boolean emailNotifications) { this.emailNotifications = emailNotifications; }
+
+    public boolean isWorkspaceDigest() { return workspaceDigest; }
+    public void setWorkspaceDigest(boolean workspaceDigest) { this.workspaceDigest = workspaceDigest; }
+
+    public boolean isFocusModeEnabled() { return focusModeEnabled; }
+    public void setFocusModeEnabled(boolean focusModeEnabled) { this.focusModeEnabled = focusModeEnabled; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
