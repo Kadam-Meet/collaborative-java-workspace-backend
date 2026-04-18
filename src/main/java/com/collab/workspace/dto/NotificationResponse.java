@@ -12,6 +12,7 @@ private boolean read;
 private Long roomId;
 private String roomCode;
 private String roomName;
+private String recipientEmail;
 private String actionType;
 private String actionToken;
 private LocalDateTime createdAt;
@@ -27,6 +28,7 @@ public NotificationResponse(Long id,
                             Long roomId,
                             String roomCode,
                             String roomName,
+                            String recipientEmail,
                             String actionType,
                             String actionToken,
                             LocalDateTime createdAt,
@@ -39,6 +41,7 @@ public NotificationResponse(Long id,
     this.roomId = roomId;
     this.roomCode = roomCode;
     this.roomName = roomName;
+    this.recipientEmail = recipientEmail;
     this.actionType = actionType;
     this.actionToken = actionToken;
     this.createdAt = createdAt;
@@ -54,6 +57,7 @@ public boolean isRead() { return read; }
 public Long getRoomId() { return roomId; }
 public String getRoomCode() { return roomCode; }
 public String getRoomName() { return roomName; }
+public String getRecipientEmail() { return recipientEmail; }
 public String getActionType() { return actionType; }
 public String getActionToken() { return actionToken; }
 public LocalDateTime getCreatedAt() { return createdAt; }
@@ -68,6 +72,7 @@ public void setRead(boolean read) { this.read = read; }
 public void setRoomId(Long roomId) { this.roomId = roomId; }
 public void setRoomCode(String roomCode) { this.roomCode = roomCode; }
 public void setRoomName(String roomName) { this.roomName = roomName; }
+public void setRecipientEmail(String recipientEmail) { this.recipientEmail = recipientEmail; }
 public void setActionType(String actionType) { this.actionType = actionType; }
 public void setActionToken(String actionToken) { this.actionToken = actionToken; }
 public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

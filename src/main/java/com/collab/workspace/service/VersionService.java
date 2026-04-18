@@ -123,6 +123,52 @@ public class VersionService {
 			.toList();
 	}
 
+	@Transactional(readOnly = true)
+	public Map<String, Object> getVersionDetail(String currentUserEmail, Long roomId, Long fileId, Long versionId) {
+		User currentUser = getUserByEmail(currentUserEmail);
+		Room room = getRoomById(roomId);
+		ensureMember(room, currentUser);
+		getRoomFileById(roomId, fileId);
+
+		Version version = versionRepository.findByIdAndFile_Id(versionId, fileId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
+
+		Map<String, Object> response = toVersionSummary(version);
+		response.put("content", version.getContent() == null ? "" : version.getContent());
+		response.put("filePath", version.getFile() != null ? version.getFile().getFilePath() : null);
+		return response;
+	}
+
+	@Transactional(readOnly = true)
+	public Map<String, Object> compareVersions(
+		String currentUserEmail,
+		Long roomId,
+		Long fileId,
+		Long fromVersionId,
+		Long toVersionId
+	) {
+		User currentUser = getUserByEmail(currentUserEmail);
+		Room room = getRoomById(roomId);
+		ensureMember(room, currentUser);
+		WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+		Version from = versionRepository.findByIdAndFile_Id(fromVersionId, fileId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "From version not found"));
+		Version to = versionRepository.findByIdAndFile_Id(toVersionId, fileId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "To version not found"));
+
+		Map<String, Object> response = new LinkedHashMap<>();
+		response.put("fileId", fileId);
+		response.put("filePath", file.getFilePath());
+		response.put("fromVersionId", fromVersionId);
+		response.put("toVersionId", toVersionId);
+		response.put("fromLabel", "v" + from.getVersionNumber());
+		response.put("toLabel", "v" + to.getVersionNumber());
+		response.put("fromContent", from.getContent() == null ? "" : from.getContent());
+		response.put("toContent", to.getContent() == null ? "" : to.getContent());
+		return response;
+	}
+
 	@Transactional
 	public Map<String, Object> revertToVersion(String currentUserEmail, Long roomId, Long fileId, Long versionId) {
 		User currentUser = getUserByEmail(currentUserEmail);
@@ -182,6 +228,47 @@ public class VersionService {
 		response.put("updatedAt", file.getUpdatedAt());
 		response.put("updatedByEmail", file.getUpdatedBy() != null ? file.getUpdatedBy().getEmail() : null);
 		return response;
+	}
+
+	@Transactional
+	public Map<String, Object> deleteVersion(String currentUserEmail, Long roomId, Long fileId, Long versionId) {
+		User currentUser = getUserByEmail(currentUserEmail);
+		Room room = getRoomById(roomId);
+		ensureCanSaveVersions(room, currentUser);
+		getRoomFileById(roomId, fileId);
+
+		Version version = versionRepository.findByIdAndFile_Id(versionId, fileId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
+
+		versionRepository.delete(version);
+		activityEventService.record(
+			room,
+			currentUser,
+			"VERSION_DELETED",
+			"Version deleted",
+			"v" + version.getVersionNumber() + " deleted from file " + version.getFile().getFilePath()
+		);
+		notificationService.notifyRoomMembers(
+			room,
+			currentUser,
+			"VERSION_DELETED",
+			"Version deleted",
+			currentUser.getName() + " deleted v" + version.getVersionNumber() + " from " + version.getFile().getFilePath(),
+			false
+		);
+		socketEventServer.broadcastRoomEvent(room, "VERSION_DELETED", Map.of(
+			"fileId", fileId,
+			"versionId", versionId,
+			"versionNumber", version.getVersionNumber(),
+			"actorEmail", currentUser.getEmail()
+		));
+
+		return Map.of(
+			"deleted", true,
+			"fileId", fileId,
+			"versionId", versionId,
+			"versionNumber", version.getVersionNumber()
+		);
 	}
 
 	private Map<String, Object> toVersionSummary(Version version) {

@@ -39,6 +39,13 @@ public class WorkspaceRequest {
     private Boolean canEditFiles;
     private Boolean canSaveVersions;
     private Boolean canRevertVersions;
+    private String memberRole;
+    private String searchQuery;
+    private String activityType;
+    private String activityActorEmail;
+    private String activityFrom;
+    private String activityTo;
+    private Boolean resolved;
     private Boolean profilePublic;
     private Boolean emailNotifications;
     private Boolean workspaceDigest;
@@ -290,6 +297,62 @@ public class WorkspaceRequest {
 
     public void setCanRevertVersions(Boolean canRevertVersions) {
         this.canRevertVersions = canRevertVersions;
+    }
+
+    public String getMemberRole() {
+        return memberRole;
+    }
+
+    public void setMemberRole(String memberRole) {
+        this.memberRole = memberRole;
+    }
+
+    public String getSearchQuery() {
+        return searchQuery;
+    }
+
+    public void setSearchQuery(String searchQuery) {
+        this.searchQuery = searchQuery;
+    }
+
+    public String getActivityType() {
+        return activityType;
+    }
+
+    public void setActivityType(String activityType) {
+        this.activityType = activityType;
+    }
+
+    public String getActivityActorEmail() {
+        return activityActorEmail;
+    }
+
+    public void setActivityActorEmail(String activityActorEmail) {
+        this.activityActorEmail = activityActorEmail;
+    }
+
+    public String getActivityFrom() {
+        return activityFrom;
+    }
+
+    public void setActivityFrom(String activityFrom) {
+        this.activityFrom = activityFrom;
+    }
+
+    public String getActivityTo() {
+        return activityTo;
+    }
+
+    public void setActivityTo(String activityTo) {
+        this.activityTo = activityTo;
+    }
+
+    public Boolean getResolved() {
+        return resolved;
+    }
+
+    public void setResolved(Boolean resolved) {
+        this.resolved = resolved;
     }
 
     public Boolean getProfilePublic() {

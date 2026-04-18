@@ -155,6 +155,23 @@ public class RoomWorkspaceController {
         return ResponseEntity.ok(roomWorkspaceService.addMember(getEmail(httpRequest), roomId, request));
     }
 
+    @GetMapping("/rooms/{roomId}/invitations")
+    public ResponseEntity<List<Map<String, Object>>> pendingInvitations(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.listPendingInvitations(getEmail(httpRequest), roomId));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/invitations/{inviteeEmail}")
+    public ResponseEntity<Map<String, Object>> revokeInvitation(
+        @PathVariable Long roomId,
+        @PathVariable String inviteeEmail,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.revokeInvitation(getEmail(httpRequest), roomId, inviteeEmail));
+    }
+
     @GetMapping("/invitations/preview")
     public ResponseEntity<Map<String, Object>> previewInvitation(@RequestParam String token) {
         return ResponseEntity.ok(roomWorkspaceService.previewInvitation(token));
@@ -166,6 +183,14 @@ public class RoomWorkspaceController {
         HttpServletRequest httpRequest
     ) {
         return ResponseEntity.ok(roomWorkspaceService.acceptInvitation(getEmail(httpRequest), request));
+    }
+
+    @PostMapping("/invitations/decline")
+    public ResponseEntity<Map<String, Object>> declineInvitation(
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.declineInvitation(getEmail(httpRequest), request));
     }
 
     @DeleteMapping("/rooms/{roomId}/members/{memberUserId}")
@@ -200,9 +225,93 @@ public class RoomWorkspaceController {
     @GetMapping("/rooms/{roomId}/activity")
     public ResponseEntity<List<Map<String, Object>>> roomActivity(
         @PathVariable Long roomId,
+        @RequestParam(value = "actorEmail", required = false) String actorEmail,
+        @RequestParam(value = "type", required = false) String eventType,
+        @RequestParam(value = "from", required = false) String from,
+        @RequestParam(value = "to", required = false) String to,
         HttpServletRequest httpRequest
     ) {
-        return ResponseEntity.ok(roomWorkspaceService.getRoomActivity(getEmail(httpRequest), roomId));
+        if ((actorEmail == null || actorEmail.isBlank())
+            && (eventType == null || eventType.isBlank())
+            && (from == null || from.isBlank())
+            && (to == null || to.isBlank())) {
+            return ResponseEntity.ok(roomWorkspaceService.getRoomActivity(getEmail(httpRequest), roomId));
+        }
+        return ResponseEntity.ok(roomWorkspaceService.getRoomActivity(getEmail(httpRequest), roomId, actorEmail, eventType, from, to));
+    }
+
+    @GetMapping("/rooms/{roomId}/search")
+    public ResponseEntity<Map<String, Object>> searchRoom(
+        @PathVariable Long roomId,
+        @RequestParam("q") String query,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.searchRoom(getEmail(httpRequest), roomId, query));
+    }
+
+    @GetMapping("/rooms/{roomId}/locks")
+    public ResponseEntity<List<Map<String, Object>>> listFileLocks(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.listFileLocks(getEmail(httpRequest), roomId));
+    }
+
+    @PostMapping("/rooms/{roomId}/files/{fileId}/lock")
+    public ResponseEntity<Map<String, Object>> acquireFileLock(
+        @PathVariable Long roomId,
+        @PathVariable Long fileId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.acquireFileLock(getEmail(httpRequest), roomId, fileId));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/files/{fileId}/lock")
+    public ResponseEntity<Map<String, Object>> releaseFileLock(
+        @PathVariable Long roomId,
+        @PathVariable Long fileId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.releaseFileLock(getEmail(httpRequest), roomId, fileId));
+    }
+
+    @GetMapping("/rooms/{roomId}/files/{fileId}/comments")
+    public ResponseEntity<List<Map<String, Object>>> fileComments(
+        @PathVariable Long roomId,
+        @PathVariable Long fileId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.listFileComments(getEmail(httpRequest), roomId, fileId));
+    }
+
+    @PostMapping("/rooms/{roomId}/files/{fileId}/comments")
+    public ResponseEntity<Map<String, Object>> addFileComment(
+        @PathVariable Long roomId,
+        @PathVariable Long fileId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.addFileComment(getEmail(httpRequest), roomId, fileId, request));
+    }
+
+    @PostMapping("/rooms/{roomId}/comments/{commentId}/reply")
+    public ResponseEntity<Map<String, Object>> replyToComment(
+        @PathVariable Long roomId,
+        @PathVariable Long commentId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.replyToComment(getEmail(httpRequest), roomId, commentId, request));
+    }
+
+    @PutMapping("/rooms/{roomId}/comments/{commentId}/resolve")
+    public ResponseEntity<Map<String, Object>> resolveComment(
+        @PathVariable Long roomId,
+        @PathVariable Long commentId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.resolveComment(getEmail(httpRequest), roomId, commentId, request));
     }
 
     @GetMapping("/rooms/{roomId}/files/{fileId}")

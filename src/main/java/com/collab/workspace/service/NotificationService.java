@@ -95,6 +95,36 @@ public Map<String, Object> markAllRead(String email) {
     );
 }
 
+public Map<String, Object> deleteNotification(String email, Long notificationId) {
+    User user = getUser(email);
+
+    Notification notification = notificationRepository
+            .findByIdAndRecipient_Id(notificationId, user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found"));
+
+    notificationRepository.delete(notification);
+
+    return Map.of(
+            "deleted", true,
+            "notificationId", notificationId,
+            "recipientEmail", user.getEmail(),
+            "unreadCount", notificationRepository.countByRecipient_IdAndReadAtIsNull(user.getId())
+    );
+}
+
+public Map<String, Object> clearNotifications(String email) {
+    User user = getUser(email);
+    List<Notification> notifications = notificationRepository.findTop50ByRecipient_IdOrderByCreatedAtDesc(user.getId());
+    int deleted = notifications.size();
+    notificationRepository.deleteAll(notifications);
+
+    return Map.of(
+            "deleted", deleted,
+            "recipientEmail", user.getEmail(),
+            "unreadCount", 0
+    );
+}
+
 // =========================
 // 🔥 Helper Methods
 // =========================
@@ -109,6 +139,7 @@ private NotificationResponse toDto(Notification n) {
                         n.getRoomId(),
                         n.getRoomCode(),
                         n.getRoomName(),
+                                                n.getRecipient() != null ? n.getRecipient().getEmail() : null,
                         n.getActionType(),
                         n.getActionToken(),
             n.getCreatedAt(),

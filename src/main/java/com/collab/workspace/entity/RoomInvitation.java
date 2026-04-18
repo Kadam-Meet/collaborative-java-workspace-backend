@@ -39,6 +39,10 @@ public class RoomInvitation {
 
     private LocalDateTime acceptedAt;
 
+    private LocalDateTime declinedAt;
+
+    private LocalDateTime revokedAt;
+
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -112,6 +116,22 @@ public class RoomInvitation {
 
     public void setAcceptedAt(LocalDateTime acceptedAt) {
         this.acceptedAt = acceptedAt;
+    }
+
+    public LocalDateTime getDeclinedAt() {
+        return declinedAt;
+    }
+
+    public void setDeclinedAt(LocalDateTime declinedAt) {
+        this.declinedAt = declinedAt;
+    }
+
+    public LocalDateTime getRevokedAt() {
+        return revokedAt;
+    }
+
+    public void setRevokedAt(LocalDateTime revokedAt) {
+        this.revokedAt = revokedAt;
     }
 
     public LocalDateTime getCreatedAt() {

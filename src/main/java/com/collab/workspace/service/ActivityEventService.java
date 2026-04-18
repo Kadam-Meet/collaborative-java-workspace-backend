@@ -7,9 +7,11 @@ import com.collab.workspace.repository.ActivityEventRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class ActivityEventService {
@@ -39,6 +41,30 @@ public class ActivityEventService {
     public List<Map<String, Object>> listRoomActivity(Long roomId) {
         return activityEventRepository.findTop30ByRoom_IdOrderByCreatedAtDesc(roomId)
             .stream()
+            .map(this::toSummary)
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listRoomActivityFiltered(
+        Long roomId,
+        String actorEmail,
+        String eventType,
+        LocalDateTime from,
+        LocalDateTime to
+    ) {
+        String normalizedActor = actorEmail == null ? null : actorEmail.trim().toLowerCase(Locale.ROOT);
+        String normalizedType = eventType == null ? null : eventType.trim().toUpperCase(Locale.ROOT);
+
+        return activityEventRepository.findTop30ByRoom_IdOrderByCreatedAtDesc(roomId)
+            .stream()
+            .filter(event -> normalizedActor == null
+                || (event.getActor() != null && event.getActor().getEmail() != null
+                    && event.getActor().getEmail().trim().toLowerCase(Locale.ROOT).equals(normalizedActor)))
+            .filter(event -> normalizedType == null
+                || (event.getEventType() != null && event.getEventType().trim().toUpperCase(Locale.ROOT).equals(normalizedType)))
+            .filter(event -> from == null || (event.getCreatedAt() != null && !event.getCreatedAt().isBefore(from)))
+            .filter(event -> to == null || (event.getCreatedAt() != null && !event.getCreatedAt().isAfter(to)))
             .map(this::toSummary)
             .toList();
     }

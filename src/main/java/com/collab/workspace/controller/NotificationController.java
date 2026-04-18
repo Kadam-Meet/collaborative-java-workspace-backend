@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,6 +48,19 @@ public class NotificationController {
     @PutMapping("/read-all")
     public ResponseEntity<Map<String, Object>> markAllRead(HttpServletRequest request) {
         return ResponseEntity.ok(notificationService.markAllRead(getEmail(request)));
+    }
+
+    @DeleteMapping("/{notificationId}")
+    public ResponseEntity<Map<String, Object>> deleteNotification(
+    @PathVariable Long notificationId,
+    HttpServletRequest request
+    ) {
+    return ResponseEntity.ok(notificationService.deleteNotification(getEmail(request), notificationId));
+    }
+
+    @DeleteMapping
+    public ResponseEntity<Map<String, Object>> clearNotifications(HttpServletRequest request) {
+        return ResponseEntity.ok(notificationService.clearNotifications(getEmail(request)));
     }
 
     private String getEmail(HttpServletRequest request) {

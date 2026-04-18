@@ -6,6 +6,7 @@ import com.collab.workspace.entity.RoomInvitation;
 import com.collab.workspace.entity.RoomMember;
 import com.collab.workspace.entity.RoomMemberId;
 import com.collab.workspace.entity.User;
+import com.collab.workspace.entity.WorkspaceComment;
 import com.collab.workspace.entity.WorkspaceFile;
 import com.collab.workspace.exception.CustomException;
 import com.collab.workspace.repository.RoomInvitationRepository;
@@ -13,6 +14,7 @@ import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.repository.WorkspaceCommentRepository;
 import com.collab.workspace.repository.VersionRepository;
 import com.collab.workspace.repository.AnalysisReportRepository;
 import com.collab.workspace.repository.CodeIssueRepository;
@@ -47,6 +49,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RoomWorkspaceService {
@@ -56,11 +59,13 @@ public class RoomWorkspaceService {
     private static final String INVITE_STATUS_EXPIRED = "EXPIRED";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final DateTimeFormatter INVITE_EXPIRY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final ConcurrentHashMap<Long, ConcurrentHashMap<Long, FileLockState>> ROOM_FILE_LOCKS = new ConcurrentHashMap<>();
 
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final WorkspaceFileRepository workspaceFileRepository;
+    private final WorkspaceCommentRepository workspaceCommentRepository;
     private final ActivityEventService activityEventService;
     private final NotificationService notificationService;
     private final SocketEventServer socketEventServer;
@@ -79,6 +84,7 @@ public class RoomWorkspaceService {
         RoomMemberRepository roomMemberRepository,
         UserRepository userRepository,
         WorkspaceFileRepository workspaceFileRepository,
+        WorkspaceCommentRepository workspaceCommentRepository,
         ActivityEventService activityEventService,
         NotificationService notificationService,
         SocketEventServer socketEventServer,
@@ -96,6 +102,7 @@ public class RoomWorkspaceService {
         this.roomMemberRepository = roomMemberRepository;
         this.userRepository = userRepository;
         this.workspaceFileRepository = workspaceFileRepository;
+        this.workspaceCommentRepository = workspaceCommentRepository;
         this.activityEventService = activityEventService;
         this.notificationService = notificationService;
         this.socketEventServer = socketEventServer;
@@ -152,6 +159,7 @@ public class RoomWorkspaceService {
             "roomId", roomId,
             "actorEmail", currentUser.getEmail()
         ));
+        ROOM_FILE_LOCKS.remove(roomId);
         roomRepository.delete(room);
 
         return Map.of("status", "OK", "roomId", roomId);
@@ -354,6 +362,7 @@ public class RoomWorkspaceService {
         response.put("expired", expired);
         response.put("accepted", accepted);
         response.put("inviteeEmail", invitation.getInviteeEmail());
+        response.put("inviterEmail", invitation.getInviter() != null ? invitation.getInviter().getEmail() : null);
         response.put("roomCode", invitation.getRoom().getRoomCode());
         response.put("roomName", invitation.getRoom().getRoomName());
         response.put("inviterName", invitation.getInviter() != null ? invitation.getInviter().getName() : null);
@@ -417,10 +426,98 @@ public class RoomWorkspaceService {
 
         return Map.of(
             "status", "ACCEPTED",
+            "inviteeEmail", currentUser.getEmail(),
+            "inviterEmail", invitation.getInviter() != null ? invitation.getInviter().getEmail() : null,
             "roomCode", room.getRoomCode(),
             "roomName", room.getRoomName(),
             "roomId", room.getId()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listPendingInvitations(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        return roomInvitationRepository.findAllByRoom_IdAndStatusOrderByCreatedAtDesc(roomId, INVITE_STATUS_PENDING)
+            .stream()
+            .map(this::toInvitationSummary)
+            .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> revokeInvitation(String currentUserEmail, Long roomId, String inviteeEmail) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        String normalizedInviteeEmail = normalizeEmail(inviteeEmail);
+        RoomInvitation invitation = roomInvitationRepository
+            .findByRoom_IdAndInviteeEmailIgnoreCaseAndStatus(roomId, normalizedInviteeEmail, INVITE_STATUS_PENDING)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pending invitation not found"));
+
+        invitation.setStatus("REVOKED");
+        invitation.setRevokedAt(LocalDateTime.now());
+        roomInvitationRepository.save(invitation);
+
+        notificationService.notifyUser(
+            userRepository.findByEmailIgnoreCase(normalizedInviteeEmail).orElse(null),
+            "ROOM_INVITE_REVOKED",
+            "Invitation revoked",
+            currentUser.getName() + " revoked your invitation to " + room.getRoomName(),
+            room
+        );
+
+        activityEventService.record(
+            room,
+            currentUser,
+            "INVITATION_REVOKED",
+            "Invitation revoked",
+            normalizedInviteeEmail + " invitation revoked from " + room.getRoomName()
+        );
+
+        return toInvitationSummary(invitation);
+    }
+
+    @Transactional
+    public Map<String, Object> declineInvitation(String currentUserEmail, WorkspaceRequest request) {
+        String token = required(request.getInvitationToken(), "invitationToken is required");
+        User currentUser = getUserByEmail(currentUserEmail);
+        RoomInvitation invitation = findInvitationByToken(token);
+
+        if (!normalizeEmail(currentUser.getEmail()).equalsIgnoreCase(normalizeEmail(invitation.getInviteeEmail()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This invitation belongs to a different email");
+        }
+        if (!INVITE_STATUS_PENDING.equalsIgnoreCase(invitation.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation is no longer active");
+        }
+
+        invitation.setStatus("DECLINED");
+        invitation.setDeclinedAt(LocalDateTime.now());
+        roomInvitationRepository.save(invitation);
+
+        if (invitation.getInviter() != null) {
+            notificationService.notifyUser(
+                invitation.getInviter(),
+                "ROOM_INVITE_DECLINED",
+                "Invitation declined",
+                currentUser.getName() + " declined your invitation to " + invitation.getRoom().getRoomName(),
+                invitation.getRoom()
+            );
+        }
+
+        activityEventService.record(
+            invitation.getRoom(),
+            currentUser,
+            "INVITATION_DECLINED",
+            "Invitation declined",
+            currentUser.getEmail() + " declined invitation to " + invitation.getRoom().getRoomName()
+        );
+
+        Map<String, Object> response = toInvitationSummary(invitation);
+        response.put("status", invitation.getStatus());
+        return response;
     }
 
     @Transactional
@@ -462,6 +559,79 @@ public class RoomWorkspaceService {
         return activityEventService.listRoomActivity(roomId);
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getRoomActivity(
+        String currentUserEmail,
+        Long roomId,
+        String actorEmail,
+        String eventType,
+        String from,
+        String to
+    ) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        return activityEventService.listRoomActivityFiltered(
+            roomId,
+            isBlank(actorEmail) ? null : actorEmail,
+            isBlank(eventType) ? null : eventType,
+            parseLocalDateTimeOrNull(from),
+            parseLocalDateTimeOrNull(to)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> searchRoom(String currentUserEmail, Long roomId, String query) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        String q = required(query, "query is required").trim().toLowerCase(Locale.ROOT);
+
+        List<Map<String, Object>> files = workspaceFileRepository.findAllByRoom_IdOrderByUpdatedAtDesc(roomId)
+            .stream()
+            .filter(file -> containsIgnoreCase(file.getFilePath(), q) || containsIgnoreCase(file.getContent(), q))
+            .limit(25)
+            .map(this::toFileSummary)
+            .toList();
+
+        List<Map<String, Object>> versionHits = workspaceFileRepository.findAllByRoom_IdOrderByUpdatedAtDesc(roomId)
+            .stream()
+            .flatMap(file -> versionRepository.findAllByFile_IdOrderByVersionNumberDesc(file.getId()).stream())
+            .filter(version -> containsIgnoreCase(version.getContent(), q)
+                || containsIgnoreCase(version.getFile() != null ? version.getFile().getFilePath() : null, q))
+            .limit(25)
+            .map(version -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", version.getId());
+                map.put("versionNumber", version.getVersionNumber());
+                map.put("createdAt", version.getCreatedAt());
+                map.put("authorName", version.getSavedBy() != null ? version.getSavedBy().getName() : null);
+                map.put("authorEmail", version.getSavedBy() != null ? version.getSavedBy().getEmail() : null);
+                map.put("fileId", version.getFile() != null ? version.getFile().getId() : null);
+                map.put("filePath", version.getFile() != null ? version.getFile().getFilePath() : null);
+                String content = version.getContent() == null ? "" : version.getContent().replace("\r", "").replace("\n", " ").trim();
+                map.put("contentPreview", content.length() <= 100 ? content : content.substring(0, 100) + "...");
+                return map;
+            })
+            .toList();
+
+        List<Map<String, Object>> activity = activityEventService.listRoomActivity(roomId)
+            .stream()
+            .filter(event -> containsIgnoreCase((String) event.get("title"), q)
+                || containsIgnoreCase((String) event.get("description"), q)
+                || containsIgnoreCase((String) event.get("actorEmail"), q))
+            .limit(25)
+            .toList();
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("query", q);
+        response.put("files", files);
+        response.put("versions", versionHits);
+        response.put("activity", activity);
+        return response;
+    }
+
     @Transactional
     public Map<String, Object> updateMemberPermissions(
         String currentUserEmail,
@@ -488,6 +658,32 @@ public class RoomWorkspaceService {
         }
         if (request.getCanRevertVersions() != null) {
             member.setCanRevertVersions(request.getCanRevertVersions());
+        }
+        if (!isBlank(request.getMemberRole())) {
+            String role = request.getMemberRole().trim().toUpperCase(Locale.ROOT);
+            switch (role) {
+                case "VIEWER" -> {
+                    member.setCanEditFiles(false);
+                    member.setCanSaveVersions(false);
+                    member.setCanRevertVersions(false);
+                }
+                case "REVIEWER" -> {
+                    member.setCanEditFiles(false);
+                    member.setCanSaveVersions(false);
+                    member.setCanRevertVersions(true);
+                }
+                case "EDITOR" -> {
+                    member.setCanEditFiles(true);
+                    member.setCanSaveVersions(true);
+                    member.setCanRevertVersions(false);
+                }
+                case "ADMIN" -> {
+                    member.setCanEditFiles(true);
+                    member.setCanSaveVersions(true);
+                    member.setCanRevertVersions(true);
+                }
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role: " + role);
+            }
         }
 
         roomMemberRepository.save(member);
@@ -853,6 +1049,185 @@ public class RoomWorkspaceService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listFileLocks(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        ConcurrentHashMap<Long, FileLockState> locks = ROOM_FILE_LOCKS.getOrDefault(roomId, new ConcurrentHashMap<>());
+        return locks.entrySet().stream().map(entry -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("fileId", entry.getKey());
+            map.put("lockedByEmail", entry.getValue().lockedByEmail);
+            map.put("lockedByName", entry.getValue().lockedByName);
+            map.put("lockedAt", entry.getValue().lockedAt);
+            return map;
+        }).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> acquireFileLock(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+        ROOM_FILE_LOCKS.computeIfAbsent(roomId, ignored -> new ConcurrentHashMap<>());
+        ConcurrentHashMap<Long, FileLockState> locks = ROOM_FILE_LOCKS.get(roomId);
+        FileLockState existing = locks.get(fileId);
+        if (existing != null && !existing.lockedByEmail.equalsIgnoreCase(currentUser.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "File is locked by " + existing.lockedByEmail);
+        }
+
+        FileLockState lockState = new FileLockState(currentUser.getEmail(), currentUser.getName(), LocalDateTime.now());
+        locks.put(fileId, lockState);
+
+        socketEventServer.broadcastRoomEvent(room, "FILE_LOCKED", Map.of(
+            "fileId", fileId,
+            "filePath", file.getFilePath(),
+            "lockedByEmail", currentUser.getEmail(),
+            "lockedByName", currentUser.getName(),
+            "lockedAt", lockState.lockedAt.toString()
+        ));
+
+        return Map.of(
+            "fileId", fileId,
+            "filePath", file.getFilePath(),
+            "lockedByEmail", currentUser.getEmail(),
+            "lockedByName", currentUser.getName(),
+            "lockedAt", lockState.lockedAt
+        );
+    }
+
+    @Transactional
+    public Map<String, Object> releaseFileLock(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+        ConcurrentHashMap<Long, FileLockState> locks = ROOM_FILE_LOCKS.get(roomId);
+        if (locks == null) {
+            return Map.of("fileId", fileId, "released", false);
+        }
+        FileLockState existing = locks.get(fileId);
+        if (existing == null) {
+            return Map.of("fileId", fileId, "released", false);
+        }
+        if (!existing.lockedByEmail.equalsIgnoreCase(currentUser.getEmail()) && !isOwner(room, currentUser)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only lock owner or room owner can release lock");
+        }
+
+        locks.remove(fileId);
+        socketEventServer.broadcastRoomEvent(room, "FILE_UNLOCKED", Map.of(
+            "fileId", fileId,
+            "filePath", file.getFilePath(),
+            "unlockedByEmail", currentUser.getEmail()
+        ));
+
+        return Map.of("fileId", fileId, "released", true);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listFileComments(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        getRoomFileById(roomId, fileId);
+
+        List<WorkspaceComment> comments = workspaceCommentRepository.findAllByRoom_IdAndFile_IdOrderByCreatedAtAsc(roomId, fileId);
+        return comments.stream().map(this::toCommentSummary).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> addFileComment(String currentUserEmail, Long roomId, Long fileId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+        WorkspaceComment comment = new WorkspaceComment();
+        comment.setRoom(room);
+        comment.setFile(file);
+        comment.setAuthor(currentUser);
+        comment.setContent(required(request.getContent(), "content is required").trim());
+        comment.setStartLine(request.getStartLine());
+        comment.setStartColumn(request.getStartColumn());
+        comment.setEndLine(request.getEndLine());
+        comment.setEndColumn(request.getEndColumn());
+        comment.setCreatedAt(LocalDateTime.now());
+        comment.setUpdatedAt(LocalDateTime.now());
+        comment = workspaceCommentRepository.save(comment);
+
+        socketEventServer.broadcastRoomEvent(room, "COMMENT_CREATED", Map.of(
+            "commentId", comment.getId(),
+            "fileId", fileId,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return toCommentSummary(comment);
+    }
+
+    @Transactional
+    public Map<String, Object> replyToComment(String currentUserEmail, Long roomId, Long commentId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        WorkspaceComment parent = workspaceCommentRepository.findByIdAndRoom_Id(commentId, roomId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+
+        WorkspaceComment reply = new WorkspaceComment();
+        reply.setRoom(room);
+        reply.setFile(parent.getFile());
+        reply.setAuthor(currentUser);
+        reply.setParent(parent);
+        reply.setContent(required(request.getContent(), "content is required").trim());
+        reply.setStartLine(parent.getStartLine());
+        reply.setStartColumn(parent.getStartColumn());
+        reply.setEndLine(parent.getEndLine());
+        reply.setEndColumn(parent.getEndColumn());
+        reply.setCreatedAt(LocalDateTime.now());
+        reply.setUpdatedAt(LocalDateTime.now());
+        reply = workspaceCommentRepository.save(reply);
+
+        socketEventServer.broadcastRoomEvent(room, "COMMENT_REPLY_CREATED", Map.of(
+            "commentId", reply.getId(),
+            "parentCommentId", parent.getId(),
+            "fileId", parent.getFile() != null ? parent.getFile().getId() : null,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return toCommentSummary(reply);
+    }
+
+    @Transactional
+    public Map<String, Object> resolveComment(String currentUserEmail, Long roomId, Long commentId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        WorkspaceComment comment = workspaceCommentRepository.findByIdAndRoom_Id(commentId, roomId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+
+        boolean resolved = request.getResolved() == null || request.getResolved();
+        comment.setResolved(resolved);
+        comment.setResolvedBy(resolved ? currentUser : null);
+        comment.setResolvedAt(resolved ? LocalDateTime.now() : null);
+        comment.setUpdatedAt(LocalDateTime.now());
+        workspaceCommentRepository.save(comment);
+
+        socketEventServer.broadcastRoomEvent(room, "COMMENT_RESOLVED", Map.of(
+            "commentId", comment.getId(),
+            "resolved", resolved,
+            "fileId", comment.getFile() != null ? comment.getFile().getId() : null,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return toCommentSummary(comment);
+    }
+
     private void addMemberIfMissing(Room room, User user) {
         boolean exists = roomMemberRepository.existsByRoom_IdAndUser_Id(room.getId(), user.getId());
         if (exists) {
@@ -909,6 +1284,7 @@ public class RoomWorkspaceService {
         response.put("canEditFiles", isOwner || member.isCanEditFiles());
         response.put("canSaveVersions", isOwner || member.isCanSaveVersions());
         response.put("canRevertVersions", isOwner || member.isCanRevertVersions());
+        response.put("memberRole", resolveRoleLabel(isOwner, member));
         return response;
     }
 
@@ -919,6 +1295,45 @@ public class RoomWorkspaceService {
         response.put("language", file.getLanguage());
         response.put("updatedAt", file.getUpdatedAt());
         response.put("updatedByEmail", file.getUpdatedBy() != null ? file.getUpdatedBy().getEmail() : null);
+        return response;
+    }
+
+    private Map<String, Object> toInvitationSummary(RoomInvitation invitation) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", invitation.getId());
+        response.put("status", invitation.getStatus());
+        response.put("roomId", invitation.getRoom() != null ? invitation.getRoom().getId() : null);
+        response.put("roomCode", invitation.getRoom() != null ? invitation.getRoom().getRoomCode() : null);
+        response.put("roomName", invitation.getRoom() != null ? invitation.getRoom().getRoomName() : null);
+        response.put("inviteeEmail", invitation.getInviteeEmail());
+        response.put("inviterEmail", invitation.getInviter() != null ? invitation.getInviter().getEmail() : null);
+        response.put("acceptedByEmail", invitation.getAcceptedBy() != null ? invitation.getAcceptedBy().getEmail() : null);
+        response.put("createdAt", invitation.getCreatedAt());
+        response.put("expiresAt", invitation.getExpiresAt());
+        response.put("acceptedAt", invitation.getAcceptedAt());
+        response.put("declinedAt", invitation.getDeclinedAt());
+        response.put("revokedAt", invitation.getRevokedAt());
+        return response;
+    }
+
+    private Map<String, Object> toCommentSummary(WorkspaceComment comment) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", comment.getId());
+        response.put("roomId", comment.getRoom() != null ? comment.getRoom().getId() : null);
+        response.put("fileId", comment.getFile() != null ? comment.getFile().getId() : null);
+        response.put("parentId", comment.getParent() != null ? comment.getParent().getId() : null);
+        response.put("content", comment.getContent());
+        response.put("startLine", comment.getStartLine());
+        response.put("startColumn", comment.getStartColumn());
+        response.put("endLine", comment.getEndLine());
+        response.put("endColumn", comment.getEndColumn());
+        response.put("resolved", comment.isResolved());
+        response.put("resolvedByEmail", comment.getResolvedBy() != null ? comment.getResolvedBy().getEmail() : null);
+        response.put("resolvedAt", comment.getResolvedAt());
+        response.put("createdAt", comment.getCreatedAt());
+        response.put("updatedAt", comment.getUpdatedAt());
+        response.put("authorEmail", comment.getAuthor() != null ? comment.getAuthor().getEmail() : null);
+        response.put("authorName", comment.getAuthor() != null ? comment.getAuthor().getName() : null);
         return response;
     }
 
@@ -936,12 +1351,29 @@ public class RoomWorkspaceService {
     }
 
     private void deleteFileDependencies(Long fileId) {
+        workspaceCommentRepository.deleteByFile_Id(fileId);
         versionRepository.deleteByFile_Id(fileId);
         List<com.collab.workspace.entity.AnalysisReport> reports = analysisReportRepository.findAllByFile_Id(fileId);
         for (com.collab.workspace.entity.AnalysisReport report : reports) {
             codeIssueRepository.deleteByReport_Id(report.getId());
         }
         analysisReportRepository.deleteAll(reports);
+    }
+
+    private String resolveRoleLabel(boolean isOwner, RoomMember member) {
+        if (isOwner) {
+            return "OWNER";
+        }
+        if (!member.isCanEditFiles() && !member.isCanSaveVersions() && !member.isCanRevertVersions()) {
+            return "VIEWER";
+        }
+        if (member.isCanEditFiles() && member.isCanSaveVersions() && member.isCanRevertVersions()) {
+            return "ADMIN";
+        }
+        if (member.isCanEditFiles() && member.isCanSaveVersions()) {
+            return "EDITOR";
+        }
+        return "REVIEWER";
     }
 
     private String resolveLanguage(String requestedLanguage, String filePath) {
@@ -953,6 +1385,29 @@ public class RoomWorkspaceService {
 
     private String normalizeEmail(String email) {
         return required(email, "email is required").trim().toLowerCase(Locale.ROOT);
+    }
+
+    private LocalDateTime parseLocalDateTimeOrNull(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(value.trim());
+        } catch (DateTimeParseException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid datetime format: " + value);
+        }
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && query != null && value.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean isOwner(Room room, User user) {
+        return room.getOwner() != null && user != null && room.getOwner().getId().equals(user.getId());
     }
 
     private RoomInvitation findInvitationByToken(String rawToken) {
@@ -1017,6 +1472,18 @@ public class RoomWorkspaceService {
             mailSender.send(message);
         } catch (MessagingException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to send invitation email", ex);
+        }
+    }
+
+    private static class FileLockState {
+        private final String lockedByEmail;
+        private final String lockedByName;
+        private final LocalDateTime lockedAt;
+
+        private FileLockState(String lockedByEmail, String lockedByName, LocalDateTime lockedAt) {
+            this.lockedByEmail = lockedByEmail;
+            this.lockedByName = lockedByName;
+            this.lockedAt = lockedAt;
         }
     }
 

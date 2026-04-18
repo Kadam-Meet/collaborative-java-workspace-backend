@@ -12,6 +12,8 @@ public interface VersionRepository extends JpaRepository<Version, Long> {
 
 	Optional<Version> findByIdAndFile_Id(Long id, Long fileId);
 
+	void deleteByIdAndFile_Id(Long id, Long fileId);
+
 	Optional<Version> findTopByFile_IdOrderByVersionNumberDesc(Long fileId);
 
 	long countByFile_Id(Long fileId);
