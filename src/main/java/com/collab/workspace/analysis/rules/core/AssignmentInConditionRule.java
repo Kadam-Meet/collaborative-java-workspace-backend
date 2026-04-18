@@ -6,6 +6,7 @@ import com.collab.workspace.analysis.model.Severity;
 import com.collab.workspace.analysis.rules.AnalysisRule;
 import com.collab.workspace.analysis.rules.RuleContext;
 import com.collab.workspace.analysis.rules.RuleSupport;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
@@ -47,16 +48,27 @@ public class AssignmentInConditionRule implements AnalysisRule {
 	}
 
 	private boolean isInsideCondition(AssignExpr assignExpr) {
-		Optional<IfStmt> ifAncestor = assignExpr.findAncestor(IfStmt.class);
+		Optional<IfStmt> ifAncestor = findAncestor(assignExpr, IfStmt.class);
 		if (ifAncestor.isPresent() && ifAncestor.get().getCondition().isAncestorOf(assignExpr)) {
 			return true;
 		}
 
-		return assignExpr.findAncestor(WhileStmt.class)
+		return findAncestor(assignExpr, WhileStmt.class)
 			.filter(whileStmt -> whileStmt.getCondition().isAncestorOf(assignExpr))
 			.isPresent()
-			|| assignExpr.findAncestor(DoStmt.class)
+			|| findAncestor(assignExpr, DoStmt.class)
 				.filter(doStmt -> doStmt.getCondition().isAncestorOf(assignExpr))
 				.isPresent();
+	}
+
+	private <T extends Node> Optional<T> findAncestor(Node node, Class<T> type) {
+		Node current = node.getParentNode().orElse(null);
+		while (current != null) {
+			if (type.isInstance(current)) {
+				return Optional.of(type.cast(current));
+			}
+			current = current.getParentNode().orElse(null);
+		}
+		return Optional.empty();
 	}
 }

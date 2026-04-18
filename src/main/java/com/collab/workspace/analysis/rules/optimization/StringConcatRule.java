@@ -6,6 +6,7 @@ import com.collab.workspace.analysis.model.Severity;
 import com.collab.workspace.analysis.rules.AnalysisRule;
 import com.collab.workspace.analysis.rules.RuleContext;
 import com.collab.workspace.analysis.rules.RuleSupport;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.stmt.DoStmt;
@@ -62,9 +63,20 @@ public class StringConcatRule implements AnalysisRule {
 	}
 
 	private boolean isInsideLoop(BinaryExpr binaryExpr) {
-		return binaryExpr.findAncestor(ForStmt.class).isPresent()
-			|| binaryExpr.findAncestor(ForEachStmt.class).isPresent()
-			|| binaryExpr.findAncestor(WhileStmt.class).isPresent()
-			|| binaryExpr.findAncestor(DoStmt.class).isPresent();
+		return hasAncestor(binaryExpr, ForStmt.class)
+			|| hasAncestor(binaryExpr, ForEachStmt.class)
+			|| hasAncestor(binaryExpr, WhileStmt.class)
+			|| hasAncestor(binaryExpr, DoStmt.class);
+	}
+
+	private boolean hasAncestor(Node node, Class<? extends Node> ancestorType) {
+		Node current = node.getParentNode().orElse(null);
+		while (current != null) {
+			if (ancestorType.isInstance(current)) {
+				return true;
+			}
+			current = current.getParentNode().orElse(null);
+		}
+		return false;
 	}
 }

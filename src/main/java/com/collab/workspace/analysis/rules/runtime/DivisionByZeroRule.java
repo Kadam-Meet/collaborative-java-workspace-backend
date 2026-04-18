@@ -30,7 +30,7 @@ public class DivisionByZeroRule implements AnalysisRule {
 		context.compilationUnit().findAll(BinaryExpr.class).stream()
 			.filter(binaryExpr -> binaryExpr.getOperator() == BinaryExpr.Operator.DIVIDE)
 			.filter(binaryExpr -> binaryExpr.getRight() instanceof IntegerLiteralExpr)
-			.filter(binaryExpr -> ((IntegerLiteralExpr) binaryExpr.getRight()).asInt() == 0)
+			.filter(binaryExpr -> ((IntegerLiteralExpr) binaryExpr.getRight()).asNumber().intValue() == 0)
 			.forEach(binaryExpr -> issues.add(RuleSupport.issue(
 				this,
 				IssueType.WARNING,
