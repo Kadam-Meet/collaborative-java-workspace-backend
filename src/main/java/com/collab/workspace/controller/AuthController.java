@@ -1,7 +1,10 @@
 package com.collab.workspace.controller;
 
+import com.collab.workspace.dto.ApiMessageResponse;
 import com.collab.workspace.dto.AuthResponse;
+import com.collab.workspace.dto.ForgotPasswordRequest;
 import com.collab.workspace.dto.LoginRequest;
+import com.collab.workspace.dto.ResetPasswordRequest;
 import com.collab.workspace.dto.SignupRequest;
 import com.collab.workspace.dto.WorkspaceRequest;
 import com.collab.workspace.service.AuthService;
@@ -33,6 +36,16 @@ public class AuthController {
 	@PostMapping("/login")
 	public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
 		return ResponseEntity.ok(authService.login(request));
+	}
+
+	@PostMapping("/forgot-password")
+	public ResponseEntity<ApiMessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+		return ResponseEntity.ok(authService.requestPasswordReset(request));
+	}
+
+	@PostMapping("/reset-password")
+	public ResponseEntity<ApiMessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+		return ResponseEntity.ok(authService.resetPassword(request));
 	}
 
 	@GetMapping("/me")

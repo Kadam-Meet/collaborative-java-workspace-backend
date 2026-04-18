@@ -14,6 +14,7 @@ public class WorkspaceRequest {
     private String roomName;
     private String roomCode;
     private String memberEmail;
+    private String invitationToken;
     private String filePath;
     private String folderPath;
     private String newFolderPath;
@@ -97,6 +98,14 @@ public class WorkspaceRequest {
 
     public void setMemberEmail(String memberEmail) {
         this.memberEmail = memberEmail;
+    }
+
+    public String getInvitationToken() {
+        return invitationToken;
+    }
+
+    public void setInvitationToken(String invitationToken) {
+        this.invitationToken = invitationToken;
     }
 
     public String getFilePath() {

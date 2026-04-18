@@ -33,6 +33,12 @@ public class User {
     @Column(length = 32)
     private String accentColor = "emerald";
 
+    @Column(name = "password_reset_token_hash", length = 128)
+    private String passwordResetTokenHash;
+
+    @Column(name = "password_reset_token_expires_at")
+    private LocalDateTime passwordResetTokenExpiresAt;
+
     private boolean profilePublic = true;
 
     private boolean emailNotifications = true;
@@ -73,6 +79,12 @@ public class User {
 
     public String getAccentColor() { return accentColor; }
     public void setAccentColor(String accentColor) { this.accentColor = accentColor; }
+
+    public String getPasswordResetTokenHash() { return passwordResetTokenHash; }
+    public void setPasswordResetTokenHash(String passwordResetTokenHash) { this.passwordResetTokenHash = passwordResetTokenHash; }
+
+    public LocalDateTime getPasswordResetTokenExpiresAt() { return passwordResetTokenExpiresAt; }
+    public void setPasswordResetTokenExpiresAt(LocalDateTime passwordResetTokenExpiresAt) { this.passwordResetTokenExpiresAt = passwordResetTokenExpiresAt; }
 
     public boolean isProfilePublic() { return profilePublic; }
     public void setProfilePublic(boolean profilePublic) { this.profilePublic = profilePublic; }

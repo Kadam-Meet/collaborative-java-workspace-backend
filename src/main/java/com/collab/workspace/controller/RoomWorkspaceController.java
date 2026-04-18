@@ -155,6 +155,19 @@ public class RoomWorkspaceController {
         return ResponseEntity.ok(roomWorkspaceService.addMember(getEmail(httpRequest), roomId, request));
     }
 
+    @GetMapping("/invitations/preview")
+    public ResponseEntity<Map<String, Object>> previewInvitation(@RequestParam String token) {
+        return ResponseEntity.ok(roomWorkspaceService.previewInvitation(token));
+    }
+
+    @PostMapping("/invitations/accept")
+    public ResponseEntity<Map<String, Object>> acceptInvitation(
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.acceptInvitation(getEmail(httpRequest), request));
+    }
+
     @DeleteMapping("/rooms/{roomId}/members/{memberUserId}")
     public ResponseEntity<Map<String, Object>> removeMember(
         @PathVariable Long roomId,

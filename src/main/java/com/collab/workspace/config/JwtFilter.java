@@ -16,6 +16,9 @@ public class JwtFilter extends OncePerRequestFilter {
 private static final Set<String> PUBLIC_PATHS = Set.of(
         "/api/auth/login",
         "/api/auth/signup",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/workspaces/invitations/preview",
         "/api/v1/meta/health"
 );
 

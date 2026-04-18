@@ -30,6 +30,11 @@ public class Notification {
 
     private String roomName;
 
+    private String actionType;
+
+    @Column(length = 512)
+    private String actionToken;
+
     @ManyToOne
     @JoinColumn(name = "recipient_user_id")
     private User recipient;
@@ -60,6 +65,12 @@ public class Notification {
 
     public String getRoomName() { return roomName; }
     public void setRoomName(String roomName) { this.roomName = roomName; }
+
+    public String getActionType() { return actionType; }
+    public void setActionType(String actionType) { this.actionType = actionType; }
+
+    public String getActionToken() { return actionToken; }
+    public void setActionToken(String actionToken) { this.actionToken = actionToken; }
 
     public User getRecipient() { return recipient; }
     public void setRecipient(User recipient) { this.recipient = recipient; }

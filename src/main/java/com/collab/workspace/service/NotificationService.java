@@ -102,10 +102,15 @@ public Map<String, Object> markAllRead(String email) {
 private NotificationResponse toDto(Notification n) {
     return new NotificationResponse(
             n.getId(),
+                        n.getType(),
             n.getTitle(),
             n.getMessage(),
                         n.getReadAt() != null,
+                        n.getRoomId(),
                         n.getRoomCode(),
+                        n.getRoomName(),
+                        n.getActionType(),
+                        n.getActionToken(),
             n.getCreatedAt(),
             n.getReadAt()
     );
@@ -120,6 +125,18 @@ private User getUser(String email) {
 }
 
 public Notification notifyUser(User recipient, String type, String title, String message, Room room) {
+        return notifyUser(recipient, type, title, message, room, null, null);
+}
+
+public Notification notifyUser(
+        User recipient,
+        String type,
+        String title,
+        String message,
+        Room room,
+        String actionType,
+        String actionToken
+) {
         if (recipient == null) {
                 return null;
         }
@@ -134,6 +151,8 @@ public Notification notifyUser(User recipient, String type, String title, String
                 notification.setRoomCode(room.getRoomCode());
                 notification.setRoomName(room.getRoomName());
         }
+        notification.setActionType(actionType);
+        notification.setActionToken(actionToken);
         return notificationRepository.save(notification);
 }
 

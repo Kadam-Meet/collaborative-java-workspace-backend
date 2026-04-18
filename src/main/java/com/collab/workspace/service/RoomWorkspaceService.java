@@ -2,11 +2,13 @@ package com.collab.workspace.service;
 
 import com.collab.workspace.dto.WorkspaceRequest;
 import com.collab.workspace.entity.Room;
+import com.collab.workspace.entity.RoomInvitation;
 import com.collab.workspace.entity.RoomMember;
 import com.collab.workspace.entity.RoomMemberId;
 import com.collab.workspace.entity.User;
 import com.collab.workspace.entity.WorkspaceFile;
 import com.collab.workspace.exception.CustomException;
+import com.collab.workspace.repository.RoomInvitationRepository;
 import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
@@ -18,16 +20,27 @@ import com.collab.workspace.repository.ActivityEventRepository;
 import com.collab.workspace.repository.NotificationRepository;
 import com.collab.workspace.socket.SocketEventServer;
 import com.collab.workspace.util.FileUtil;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URLEncoder;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.format.DateTimeFormatter;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,6 +50,12 @@ import java.util.UUID;
 
 @Service
 public class RoomWorkspaceService {
+
+    private static final String INVITE_STATUS_PENDING = "PENDING";
+    private static final String INVITE_STATUS_ACCEPTED = "ACCEPTED";
+    private static final String INVITE_STATUS_EXPIRED = "EXPIRED";
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final DateTimeFormatter INVITE_EXPIRY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
@@ -50,6 +69,10 @@ public class RoomWorkspaceService {
     private final CodeIssueRepository codeIssueRepository;
     private final ActivityEventRepository activityEventRepository;
     private final NotificationRepository notificationRepository;
+    private final RoomInvitationRepository roomInvitationRepository;
+    private final JavaMailSender mailSender;
+    private final String frontendBaseUrl;
+    private final long invitationExpirationHours;
 
     public RoomWorkspaceService(
         RoomRepository roomRepository,
@@ -63,7 +86,11 @@ public class RoomWorkspaceService {
         AnalysisReportRepository analysisReportRepository,
         CodeIssueRepository codeIssueRepository,
         ActivityEventRepository activityEventRepository,
-        NotificationRepository notificationRepository
+        NotificationRepository notificationRepository,
+        RoomInvitationRepository roomInvitationRepository,
+        JavaMailSender mailSender,
+        @Value("${app.frontend.base-url:https://collaborative-java-workspace-fronte-theta.vercel.app}") String frontendBaseUrl,
+        @Value("${app.invitation.expiration-hours:72}") long invitationExpirationHours
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
@@ -77,6 +104,10 @@ public class RoomWorkspaceService {
         this.codeIssueRepository = codeIssueRepository;
         this.activityEventRepository = activityEventRepository;
         this.notificationRepository = notificationRepository;
+        this.roomInvitationRepository = roomInvitationRepository;
+        this.mailSender = mailSender;
+        this.frontendBaseUrl = frontendBaseUrl;
+        this.invitationExpirationHours = invitationExpirationHours;
     }
 
     @Transactional
@@ -115,6 +146,7 @@ public class RoomWorkspaceService {
         roomMemberRepository.deleteAll(members);
         activityEventRepository.deleteByRoom_Id(roomId);
         notificationRepository.deleteByRoomId(roomId);
+        roomInvitationRepository.deleteByRoom_Id(roomId);
 
         socketEventServer.broadcastRoomEvent(room, "ROOM_DELETED", Map.of(
             "roomId", roomId,
@@ -248,31 +280,147 @@ public class RoomWorkspaceService {
         Room room = getRoomById(roomId);
         ensureOwner(room, currentUser);
 
-        String memberEmail = required(request.getMemberEmail(), "memberEmail is required");
-        User member = getUserByEmail(memberEmail);
-        addMemberIfMissing(room, member);
+        String memberEmail = normalizeEmail(required(request.getMemberEmail(), "memberEmail is required"));
+        if (memberEmail.equalsIgnoreCase(currentUser.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Owner is already part of this room");
+        }
+
+        User member = userRepository.findByEmailIgnoreCase(memberEmail).orElse(null);
+        if (member != null && roomMemberRepository.existsByRoom_IdAndUser_Id(room.getId(), member.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "User is already a member of this room");
+        }
+
+        String token = generateInvitationToken();
+        RoomInvitation invitation = roomInvitationRepository
+            .findByRoom_IdAndInviteeEmailIgnoreCaseAndStatus(room.getId(), memberEmail, INVITE_STATUS_PENDING)
+            .orElseGet(RoomInvitation::new);
+
+        invitation.setRoom(room);
+        invitation.setInviter(currentUser);
+        invitation.setInviteeEmail(memberEmail);
+        invitation.setTokenHash(sha256(token));
+        invitation.setStatus(INVITE_STATUS_PENDING);
+        invitation.setAcceptedAt(null);
+        invitation.setAcceptedBy(null);
+        invitation.setExpiresAt(LocalDateTime.now().plusHours(invitationExpirationHours));
+        roomInvitationRepository.save(invitation);
+
         activityEventService.record(
             room,
             currentUser,
-            "MEMBER_ADDED",
-            "Member added",
-            member.getEmail() + " added to " + room.getRoomName()
+            "ROOM_INVITED",
+            "Invitation sent",
+            memberEmail + " invited to " + room.getRoomName()
         );
-        notificationService.notifyUser(
-            member,
-            "ROOM_INVITE",
-            "Added to room",
-            "You were added to " + room.getRoomName() + " by " + currentUser.getName(),
-            room
-        );
+
+        if (member != null) {
+            notificationService.notifyUser(
+                member,
+                "ROOM_INVITE",
+                "Workspace invitation",
+                currentUser.getName() + " invited you to join " + room.getRoomName(),
+                room,
+                "INVITE_ACCEPT",
+                token
+            );
+        }
+
+        sendRoomInvitationEmail(room, currentUser, memberEmail, token, member == null);
+
         socketEventServer.broadcastRoomEvent(room, "MEMBER_ADDED", Map.of(
             "actorEmail", currentUser.getEmail(),
-            "memberEmail", member.getEmail(),
-            "memberName", member.getName()
+            "memberEmail", memberEmail,
+            "memberName", member != null ? member.getName() : memberEmail,
+            "invitationSent", true
+        ));
+
+        return Map.of(
+            "status", "INVITED",
+            "memberEmail", memberEmail,
+            "roomCode", room.getRoomCode(),
+            "roomName", room.getRoomName()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> previewInvitation(String token) {
+        RoomInvitation invitation = findInvitationByToken(token);
+        boolean expired = invitation.getExpiresAt() == null || invitation.getExpiresAt().isBefore(LocalDateTime.now());
+        boolean accepted = INVITE_STATUS_ACCEPTED.equalsIgnoreCase(invitation.getStatus());
+
+        User invitedUser = userRepository.findByEmailIgnoreCase(invitation.getInviteeEmail()).orElse(null);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("valid", !expired && !accepted);
+        response.put("expired", expired);
+        response.put("accepted", accepted);
+        response.put("inviteeEmail", invitation.getInviteeEmail());
+        response.put("roomCode", invitation.getRoom().getRoomCode());
+        response.put("roomName", invitation.getRoom().getRoomName());
+        response.put("inviterName", invitation.getInviter() != null ? invitation.getInviter().getName() : null);
+        response.put("requiresSignup", invitedUser == null);
+        response.put("expiresAt", invitation.getExpiresAt());
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> acceptInvitation(String currentUserEmail, WorkspaceRequest request) {
+        String token = required(request.getInvitationToken(), "invitationToken is required");
+        RoomInvitation invitation = findInvitationByToken(token);
+        if (!INVITE_STATUS_PENDING.equalsIgnoreCase(invitation.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation is no longer active");
+        }
+        if (invitation.getExpiresAt() == null || invitation.getExpiresAt().isBefore(LocalDateTime.now())) {
+            invitation.setStatus(INVITE_STATUS_EXPIRED);
+            roomInvitationRepository.save(invitation);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation has expired");
+        }
+
+        String normalizedCurrentUserEmail = normalizeEmail(currentUserEmail);
+        if (!normalizedCurrentUserEmail.equalsIgnoreCase(invitation.getInviteeEmail())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This invitation belongs to a different email");
+        }
+
+        User currentUser = getUserByEmail(normalizedCurrentUserEmail);
+        Room room = invitation.getRoom();
+        addMemberIfMissing(room, currentUser);
+
+        invitation.setStatus(INVITE_STATUS_ACCEPTED);
+        invitation.setAcceptedBy(currentUser);
+        invitation.setAcceptedAt(LocalDateTime.now());
+        roomInvitationRepository.save(invitation);
+
+        activityEventService.record(
+            room,
+            currentUser,
+            "INVITATION_ACCEPTED",
+            "Invitation accepted",
+            currentUser.getEmail() + " joined " + room.getRoomName() + " via invitation"
+        );
+
+        if (invitation.getInviter() != null) {
+            notificationService.notifyUser(
+                invitation.getInviter(),
+                "ROOM_INVITE_ACCEPTED",
+                "Invitation accepted",
+                currentUser.getName() + " accepted your invitation to " + room.getRoomName(),
+                room
+            );
+        }
+
+        socketEventServer.broadcastRoomEvent(room, "ROOM_JOINED", Map.of(
+            "actorEmail", currentUser.getEmail(),
+            "actorName", currentUser.getName(),
+            "roomId", room.getId(),
+            "roomCode", room.getRoomCode()
         ));
         socketEventServer.broadcastPresence(room);
 
-        return toRoomSummary(room);
+        return Map.of(
+            "status", "ACCEPTED",
+            "roomCode", room.getRoomCode(),
+            "roomName", room.getRoomName(),
+            "roomId", room.getId()
+        );
     }
 
     @Transactional
@@ -801,6 +949,75 @@ public class RoomWorkspaceService {
             return requestedLanguage.trim().toLowerCase(Locale.ROOT);
         }
         return FileUtil.detectLanguage(filePath);
+    }
+
+    private String normalizeEmail(String email) {
+        return required(email, "email is required").trim().toLowerCase(Locale.ROOT);
+    }
+
+    private RoomInvitation findInvitationByToken(String rawToken) {
+        String token = required(rawToken, "invitation token is required").trim();
+        String tokenHash = sha256(token);
+        return roomInvitationRepository.findByTokenHash(tokenHash)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found"));
+    }
+
+    private String generateInvitationToken() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String sha256(String raw) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashed = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hashed);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to hash invitation token", ex);
+        }
+    }
+
+    private String buildInvitationLink(String token) {
+        String baseUrl = frontendBaseUrl == null ? "" : frontendBaseUrl.trim();
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        return baseUrl + "/invite?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+    }
+
+    private void sendRoomInvitationEmail(Room room, User inviter, String inviteeEmail, String token, boolean requiresSignup) {
+        String invitationLink = buildInvitationLink(token);
+        String title = requiresSignup ? "You are invited to join Collaborative Java Workspace" : "Workspace invitation";
+        String expiryText = LocalDateTime.now().plusHours(invitationExpirationHours).format(INVITE_EXPIRY_FORMAT);
+        String actionText = requiresSignup
+            ? "Create your account and accept invitation"
+            : "Accept invitation";
+
+        String html = """
+            <p>Hello,</p>
+            <p><strong>%s</strong> invited you to collaborate in room <strong>%s</strong> (%s).</p>
+            <p><a href="%s">%s</a></p>
+            <p>This invitation expires at %s.</p>
+            """.formatted(
+            inviter != null ? inviter.getName() : "A teammate",
+            room.getRoomName(),
+            room.getRoomCode(),
+            invitationLink,
+            actionText,
+            expiryText
+        );
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setTo(inviteeEmail);
+            helper.setSubject(title);
+            helper.setText(html, true);
+            mailSender.send(message);
+        } catch (MessagingException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to send invitation email", ex);
+        }
     }
 
     private Room getRoomById(Long roomId) {
