@@ -76,6 +76,17 @@ public class VersionController {
 		return ResponseEntity.ok(versionService.revertToVersion(getEmail(httpRequest), roomId, fileId, versionId));
 	}
 
+	@PostMapping("/rooms/{roomId}/files/{fileId}/versions/{versionId}/merge")
+	public ResponseEntity<Map<String, Object>> mergeVersion(
+		@PathVariable Long roomId,
+		@PathVariable Long fileId,
+		@PathVariable Long versionId,
+		@RequestBody(required = false) WorkspaceRequest request,
+		HttpServletRequest httpRequest
+	) {
+		return ResponseEntity.ok(versionService.mergeVersion(getEmail(httpRequest), roomId, fileId, versionId, request));
+	}
+
 	@DeleteMapping("/rooms/{roomId}/files/{fileId}/versions/{versionId}")
 	public ResponseEntity<Map<String, Object>> deleteVersion(
 		@PathVariable Long roomId,

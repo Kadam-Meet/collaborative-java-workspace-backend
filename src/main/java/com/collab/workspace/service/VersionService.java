@@ -231,6 +231,90 @@ public class VersionService {
 	}
 
 	@Transactional
+	public Map<String, Object> mergeVersion(
+		String currentUserEmail,
+		Long roomId,
+		Long fileId,
+		Long versionId,
+		WorkspaceRequest request
+	) {
+		User currentUser = getUserByEmail(currentUserEmail);
+		Room room = getRoomById(roomId);
+		ensureMember(room, currentUser);
+		ensureCanEditFiles(room, currentUser);
+		WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+		Version sourceVersion = versionRepository.findByIdAndFile_Id(versionId, fileId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
+
+		String sourceContent = sourceVersion.getContent() == null ? "" : sourceVersion.getContent();
+		String mergedContent = request != null && request.getContent() != null
+			? request.getContent()
+			: sourceContent;
+
+		file.setContent(mergedContent);
+		file.setUpdatedBy(currentUser);
+		file.setUpdatedAt(LocalDateTime.now());
+		workspaceFileRepository.save(file);
+
+		Version snapshot = new Version();
+		snapshot.setFile(file);
+		int nextVersion = versionRepository.findTopByFile_IdOrderByVersionNumberDesc(fileId)
+			.map(v -> v.getVersionNumber() + 1)
+			.orElse(1);
+		snapshot.setVersionNumber(nextVersion);
+		snapshot.setContent(mergedContent);
+		if (request != null && request.getVersionMessage() != null && !request.getVersionMessage().isBlank()) {
+			snapshot.setMessage(request.getVersionMessage().trim());
+		} else if (request != null && request.getContent() != null) {
+			snapshot.setMessage("Merged from v" + sourceVersion.getVersionNumber() + " (compare + merge)");
+		} else {
+			snapshot.setMessage("Merged from v" + sourceVersion.getVersionNumber() + " (direct)");
+		}
+		snapshot.setSavedBy(currentUser);
+		snapshot.setCreatedAt(LocalDateTime.now());
+		versionRepository.save(snapshot);
+
+		activityEventService.record(
+			room,
+			currentUser,
+			"VERSION_MERGED",
+			"Version merged",
+			file.getFilePath() + " merged from v" + sourceVersion.getVersionNumber()
+		);
+		notificationService.notifyRoomMembers(
+			room,
+			currentUser,
+			"VERSION_MERGED",
+			"Version merged",
+			currentUser.getName() + " merged " + file.getFilePath() + " from v" + sourceVersion.getVersionNumber(),
+			false
+		);
+
+		Map<String, Object> payload = Map.of(
+			"fileId", file.getId(),
+			"filePath", file.getFilePath(),
+			"mergedFromVersion", sourceVersion.getVersionNumber(),
+			"newVersion", snapshot.getVersionNumber(),
+			"content", mergedContent,
+			"updatedAt", file.getUpdatedAt().toString(),
+			"actorEmail", currentUser.getEmail()
+		);
+		socketEventServer.broadcastRoomEvent(room, "VERSION_MERGED", payload);
+		socketEventServer.broadcastRoomEvent(room, "FILE_UPDATED", payload);
+
+		Map<String, Object> response = new LinkedHashMap<>();
+		response.put("fileId", file.getId());
+		response.put("filePath", file.getFilePath());
+		response.put("content", mergedContent);
+		response.put("mergedFromVersion", sourceVersion.getVersionNumber());
+		response.put("newVersion", snapshot.getVersionNumber());
+		response.put("updatedAt", file.getUpdatedAt());
+		response.put("updatedByEmail", file.getUpdatedBy() != null ? file.getUpdatedBy().getEmail() : null);
+		return response;
+	}
+
+	@Transactional
 	public Map<String, Object> deleteVersion(String currentUserEmail, Long roomId, Long fileId, Long versionId) {
 		User currentUser = getUserByEmail(currentUserEmail);
 		Room room = getRoomById(roomId);
@@ -348,6 +432,19 @@ public class VersionService {
 
 		if (!member.isCanRevertVersions()) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to revert versions");
+		}
+	}
+
+	private void ensureCanEditFiles(Room room, User user) {
+		if (room.getOwner() != null && room.getOwner().getId().equals(user.getId())) {
+			return;
+		}
+
+		var member = roomMemberRepository.findByRoom_IdAndUser_Id(room.getId(), user.getId())
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room"));
+
+		if (!member.isCanEditFiles()) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to edit files");
 		}
 	}
 
