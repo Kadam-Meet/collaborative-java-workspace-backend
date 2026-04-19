@@ -794,7 +794,10 @@ public class RoomWorkspaceService {
         ensureCanEditFiles(room, currentUser);
 
         WorkspaceFile file = getRoomFileById(roomId, fileId);
-        ensureNoEditConflict(file, request.getExpectedUpdatedAt());
+        boolean collaborativeSave = request != null && Boolean.TRUE.equals(request.getCollaborativeSave());
+        if (!collaborativeSave) {
+            ensureNoEditConflict(file, request.getExpectedUpdatedAt());
+        }
 
         if (request.getFilePath() != null && !request.getFilePath().isBlank()) {
             String filePath = request.getFilePath().trim();

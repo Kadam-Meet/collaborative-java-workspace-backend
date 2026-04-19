@@ -175,6 +175,15 @@ public class VersionService {
 		ensureCanRevertVersions(room, currentUser);
 		WorkspaceFile file = getRoomFileById(roomId, fileId);
 
+		List<Long> latestFiveVersionIds = versionRepository.findAllByFile_IdOrderByVersionNumberDesc(fileId)
+			.stream()
+			.limit(5)
+			.map(Version::getId)
+			.toList();
+		if (!latestFiveVersionIds.contains(versionId)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only the latest 5 versions can be reverted");
+		}
+
 		Version version = versionRepository.findByIdAndFile_Id(versionId, fileId)
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
 
@@ -430,7 +439,7 @@ public class VersionService {
 		var member = roomMemberRepository.findByRoom_IdAndUser_Id(room.getId(), user.getId())
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room"));
 
-		if (!member.isCanRevertVersions()) {
+		if (!member.isCanRevertVersions() && !member.isCanEditFiles()) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to revert versions");
 		}
 	}

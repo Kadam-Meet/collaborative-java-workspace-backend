@@ -29,6 +29,7 @@ public class WorkspaceRequest {
 
     private String versionMessage;
     private String expectedUpdatedAt;
+    private Boolean collaborativeSave;
     private Long fileId;
     private Integer startLine;
     private Integer startColumn;
@@ -217,6 +218,14 @@ public class WorkspaceRequest {
 
     public void setExpectedUpdatedAt(String expectedUpdatedAt) {
         this.expectedUpdatedAt = expectedUpdatedAt;
+    }
+
+    public Boolean getCollaborativeSave() {
+        return collaborativeSave;
+    }
+
+    public void setCollaborativeSave(Boolean collaborativeSave) {
+        this.collaborativeSave = collaborativeSave;
     }
 
     public Long getFileId() {
