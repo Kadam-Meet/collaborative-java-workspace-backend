@@ -123,13 +123,15 @@ public class SoloWorkspaceService {
             return "Unsaved solo workspace";
         }
 
-        return content.lines()
+        String normalizedPreview = content.lines()
             .map(String::trim)
             .filter(line -> !line.isBlank())
             .findFirst()
             .orElse(content.trim())
-            .replaceAll("\\s+", " ")
-            .substring(0, Math.min(120, content.trim().replaceAll("\\s+", " ").length()));
+            .replaceAll("\\s+", " ");
+
+        int end = Math.min(120, normalizedPreview.length());
+        return normalizedPreview.substring(0, end);
     }
 
     private String normalizeFileName(String rawFileName) {
