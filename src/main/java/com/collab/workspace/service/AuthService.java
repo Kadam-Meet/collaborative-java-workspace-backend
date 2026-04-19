@@ -34,6 +34,7 @@ import java.net.URLEncoder;
 public class AuthService {
 	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 	private static final DateTimeFormatter EMAIL_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+	private static final String DEFAULT_FRONTEND_BASE_URL = "https://collaborative-java-workspace-frontend.onrender.com";
 
 	private final UserRepository userRepository;
 	private final JwtUtil jwtUtil;
@@ -222,9 +223,11 @@ public class AuthService {
 			<p>Hello %s,</p>
 			<p>We received a request to reset your password for the Collaborative Java Workspace account linked to <strong>%s</strong>.</p>
 			<p><a href="%s">Reset your password</a></p>
+			<p>If the button does not open, copy and paste this link in your browser:</p>
+			<p><a href="%s">%s</a></p>
 			<p>This link expires at %s.</p>
 			<p>If you did not request this, you can ignore this email.</p>
-			""".formatted(escapeHtml(user.getName()), escapeHtml(user.getEmail()), resetLink, expirationText);
+			""".formatted(escapeHtml(user.getName()), escapeHtml(user.getEmail()), resetLink, resetLink, resetLink, expirationText);
 
 		try {
 			MimeMessage message = mailSender.createMimeMessage();
@@ -239,11 +242,22 @@ public class AuthService {
 	}
 
 	private String buildPasswordResetLink(String token) {
-		String baseUrl = frontendBaseUrl == null ? "" : frontendBaseUrl.trim();
-		if (baseUrl.endsWith("/")) {
+		String baseUrl = normalizeFrontendBaseUrl(frontendBaseUrl);
+		return baseUrl + "/reset-password?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+	}
+
+	private String normalizeFrontendBaseUrl(String raw) {
+		String baseUrl = raw == null ? "" : raw.trim();
+		if (baseUrl.isEmpty()) {
+			baseUrl = DEFAULT_FRONTEND_BASE_URL;
+		}
+		if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+			baseUrl = "https://" + baseUrl;
+		}
+		while (baseUrl.endsWith("/")) {
 			baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
 		}
-		return baseUrl + "/reset-password?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+		return baseUrl;
 	}
 
 	private String escapeHtml(String value) {

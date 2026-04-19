@@ -59,6 +59,7 @@ public class RoomWorkspaceService {
     private static final String INVITE_STATUS_EXPIRED = "EXPIRED";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final DateTimeFormatter INVITE_EXPIRY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final String DEFAULT_FRONTEND_BASE_URL = "https://collaborative-java-workspace-frontend.onrender.com";
     private static final ConcurrentHashMap<Long, ConcurrentHashMap<Long, FileLockState>> ROOM_FILE_LOCKS = new ConcurrentHashMap<>();
 
     private final RoomRepository roomRepository;
@@ -438,7 +439,12 @@ public class RoomWorkspaceService {
     public List<Map<String, Object>> listPendingInvitations(String currentUserEmail, Long roomId) {
         User currentUser = getUserByEmail(currentUserEmail);
         Room room = getRoomById(roomId);
-        ensureOwner(room, currentUser);
+        ensureMember(room, currentUser);
+
+        // Non-owners can open/read a workspace but should not see invitation management data.
+        if (!isOwner(room, currentUser)) {
+            return List.of();
+        }
 
         return roomInvitationRepository.findAllByRoom_IdAndStatusOrderByCreatedAtDesc(roomId, INVITE_STATUS_PENDING)
             .stream()
@@ -1434,11 +1440,22 @@ public class RoomWorkspaceService {
     }
 
     private String buildInvitationLink(String token) {
-        String baseUrl = frontendBaseUrl == null ? "" : frontendBaseUrl.trim();
-        if (baseUrl.endsWith("/")) {
+        String baseUrl = normalizeFrontendBaseUrl(frontendBaseUrl);
+        return baseUrl + "/invite?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+    }
+
+    private String normalizeFrontendBaseUrl(String raw) {
+        String baseUrl = raw == null ? "" : raw.trim();
+        if (baseUrl.isEmpty()) {
+            baseUrl = DEFAULT_FRONTEND_BASE_URL;
+        }
+        if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+            baseUrl = "https://" + baseUrl;
+        }
+        while (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
-        return baseUrl + "/invite?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        return baseUrl;
     }
 
     private void sendRoomInvitationEmail(Room room, User inviter, String inviteeEmail, String token, boolean requiresSignup) {
@@ -1452,14 +1469,20 @@ public class RoomWorkspaceService {
         String html = """
             <p>Hello,</p>
             <p><strong>%s</strong> invited you to collaborate in room <strong>%s</strong> (%s).</p>
+            <p><strong>Room Code:</strong> %s</p>
+            <p><a href="%s">%s</a></p>
+            <p>If the button does not open, copy and paste this link in your browser:</p>
             <p><a href="%s">%s</a></p>
             <p>This invitation expires at %s.</p>
             """.formatted(
             inviter != null ? inviter.getName() : "A teammate",
             room.getRoomName(),
             room.getRoomCode(),
+            room.getRoomCode(),
             invitationLink,
             actionText,
+            invitationLink,
+            invitationLink,
             expiryText
         );
 
