@@ -17,6 +17,9 @@ public class Version {
     @Column(columnDefinition = "TEXT")
     private String content;
 
+    @Column(name = "message", length = 255)
+    private String message;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @ManyToOne
@@ -36,6 +39,9 @@ public class Version {
 
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

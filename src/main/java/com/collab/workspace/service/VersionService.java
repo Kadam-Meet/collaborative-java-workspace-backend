@@ -77,6 +77,9 @@ public class VersionService {
 		version.setFile(file);
 		version.setVersionNumber(nextVersion);
 		version.setContent(file.getContent() == null ? "" : file.getContent());
+		if (request != null && request.getVersionMessage() != null && !request.getVersionMessage().isBlank()) {
+			version.setMessage(request.getVersionMessage().trim());
+		}
 		version.setSavedBy(currentUser);
 		version.setCreatedAt(LocalDateTime.now());
 		version = versionRepository.save(version);
@@ -103,11 +106,7 @@ public class VersionService {
 			"createdAt", version.getCreatedAt().toString()
 		));
 
-		Map<String, Object> response = toVersionSummary(version);
-		if (request != null && request.getVersionMessage() != null && !request.getVersionMessage().isBlank()) {
-			response.put("message", request.getVersionMessage().trim());
-		}
-		return response;
+		return toVersionSummary(version);
 	}
 
 	@Transactional(readOnly = true)
@@ -191,6 +190,7 @@ public class VersionService {
 			.orElse(1);
 		snapshot.setVersionNumber(nextVersion);
 		snapshot.setContent(file.getContent());
+		snapshot.setMessage("Reverted from v" + version.getVersionNumber());
 		snapshot.setSavedBy(currentUser);
 		snapshot.setCreatedAt(LocalDateTime.now());
 		versionRepository.save(snapshot);
@@ -280,6 +280,9 @@ public class VersionService {
 		response.put("authorEmail", version.getSavedBy() != null ? version.getSavedBy().getEmail() : null);
 		response.put("fileId", version.getFile() != null ? version.getFile().getId() : null);
 		response.put("contentPreview", preview(version.getContent()));
+		if (version.getMessage() != null && !version.getMessage().isBlank()) {
+			response.put("message", version.getMessage());
+		}
 		return response;
 	}
 
