@@ -356,12 +356,16 @@ public class RoomWorkspaceService {
         RoomInvitation invitation = findInvitationByToken(token);
         boolean expired = invitation.getExpiresAt() == null || invitation.getExpiresAt().isBefore(LocalDateTime.now());
         boolean accepted = INVITE_STATUS_ACCEPTED.equalsIgnoreCase(invitation.getStatus());
+        boolean revoked = "REVOKED".equalsIgnoreCase(invitation.getStatus());
+        boolean declined = "DECLINED".equalsIgnoreCase(invitation.getStatus());
 
         User invitedUser = userRepository.findByEmailIgnoreCase(invitation.getInviteeEmail()).orElse(null);
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("valid", !expired && !accepted);
+        response.put("valid", !expired && !accepted && !revoked && !declined);
         response.put("expired", expired);
         response.put("accepted", accepted);
+        response.put("revoked", revoked);
+        response.put("declined", declined);
         response.put("inviteeEmail", invitation.getInviteeEmail());
         response.put("inviterEmail", invitation.getInviter() != null ? invitation.getInviter().getEmail() : null);
         response.put("roomCode", invitation.getRoom().getRoomCode());
