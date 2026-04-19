@@ -95,7 +95,7 @@ public class RoomWorkspaceService {
         NotificationRepository notificationRepository,
         RoomInvitationRepository roomInvitationRepository,
         JavaMailSender mailSender,
-        @Value("${app.frontend.base-url:https://collaborative-java-workspace-fronte-theta.vercel.app}") String frontendBaseUrl,
+        @Value("${app.frontend.base-url:https://collaborative-java-workspace-frontend.onrender.com}") String frontendBaseUrl,
         @Value("${app.invitation.expiration-hours:72}") long invitationExpirationHours
     ) {
         this.roomRepository = roomRepository;

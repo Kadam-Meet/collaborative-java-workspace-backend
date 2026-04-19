@@ -14,7 +14,7 @@ import java.util.List;
 @Configuration
 public class CorsConfig {
 
-    @Value("${app.cors.allowed-origin-patterns:https://*.vercel.app,http://localhost:*,http://127.0.0.1:*}")
+    @Value("${app.cors.allowed-origin-patterns:https://collaborative-java-workspace-frontend.onrender.com,http://localhost:*,http://127.0.0.1:*}")
     private List<String> allowedOriginPatterns;
 
     @Bean

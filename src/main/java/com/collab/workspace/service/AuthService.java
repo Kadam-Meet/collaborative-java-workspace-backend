@@ -47,7 +47,7 @@ public class AuthService {
 		JwtUtil jwtUtil,
 		PasswordEncoder passwordEncoder,
 		JavaMailSender mailSender,
-		@Value("${app.frontend.base-url:https://collaborative-java-workspace-fronte-theta.vercel.app}") String frontendBaseUrl,
+		@Value("${app.frontend.base-url:https://collaborative-java-workspace-frontend.onrender.com}") String frontendBaseUrl,
 		@Value("${app.password-reset.expiration-minutes:60}") long passwordResetExpirationMinutes
 	) {
 		this.userRepository = userRepository;
