@@ -4,25 +4,36 @@ import com.collab.workspace.dto.SoloWorkspaceRequest;
 import com.collab.workspace.dto.SoloWorkspaceResponse;
 import com.collab.workspace.dto.SoloWorkspaceSummary;
 import com.collab.workspace.entity.SoloWorkspace;
+import com.collab.workspace.entity.SoloWorkspaceVersion;
 import com.collab.workspace.entity.User;
 import com.collab.workspace.repository.SoloWorkspaceRepository;
+import com.collab.workspace.repository.SoloWorkspaceVersionRepository;
 import com.collab.workspace.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class SoloWorkspaceService {
 
     private final SoloWorkspaceRepository soloWorkspaceRepository;
+    private final SoloWorkspaceVersionRepository soloWorkspaceVersionRepository;
     private final UserRepository userRepository;
 
-    public SoloWorkspaceService(SoloWorkspaceRepository soloWorkspaceRepository, UserRepository userRepository) {
+    public SoloWorkspaceService(
+        SoloWorkspaceRepository soloWorkspaceRepository,
+        SoloWorkspaceVersionRepository soloWorkspaceVersionRepository,
+        UserRepository userRepository
+    ) {
         this.soloWorkspaceRepository = soloWorkspaceRepository;
+        this.soloWorkspaceVersionRepository = soloWorkspaceVersionRepository;
         this.userRepository = userRepository;
     }
 
@@ -94,7 +105,133 @@ public class SoloWorkspaceService {
         User user = getUserByEmail(currentUserEmail);
         SoloWorkspace workspace = soloWorkspaceRepository.findByIdAndUser_Id(soloWorkspaceId, user.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solo workspace not found"));
+        soloWorkspaceVersionRepository.deleteAllBySoloWorkspace_Id(workspace.getId());
         soloWorkspaceRepository.delete(workspace);
+    }
+
+    @Transactional
+    public Map<String, Object> saveVersionSnapshot(String currentUserEmail, Long soloWorkspaceId, SoloWorkspaceRequest request) {
+        User user = getUserByEmail(currentUserEmail);
+        SoloWorkspace workspace = getSoloWorkspaceEntity(currentUserEmail, soloWorkspaceId);
+
+        if (request != null && request.getContent() != null) {
+            workspace.setContent(request.getContent());
+            soloWorkspaceRepository.save(workspace);
+        }
+
+        int nextVersion = soloWorkspaceVersionRepository.findTopBySoloWorkspace_IdOrderByVersionNumberDesc(workspace.getId())
+            .map(version -> version.getVersionNumber() + 1)
+            .orElse(1);
+
+        SoloWorkspaceVersion version = new SoloWorkspaceVersion();
+        version.setSoloWorkspace(workspace);
+        version.setVersionNumber(nextVersion);
+        version.setFileName(workspace.getFileName());
+        version.setContent(workspace.getContent() == null ? "" : workspace.getContent());
+        version.setSavedBy(user);
+        version.setCreatedAt(LocalDateTime.now());
+        version = soloWorkspaceVersionRepository.save(version);
+        pruneSoloVersions(workspace.getId());
+        return toVersionSummary(version);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listSoloVersions(String currentUserEmail, Long soloWorkspaceId) {
+        getSoloWorkspaceEntity(currentUserEmail, soloWorkspaceId);
+        return soloWorkspaceVersionRepository.findAllBySoloWorkspace_IdOrderByVersionNumberDesc(soloWorkspaceId)
+            .stream()
+            .map(this::toVersionSummary)
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getSoloVersionDetail(String currentUserEmail, Long soloWorkspaceId, Long versionId) {
+        getSoloWorkspaceEntity(currentUserEmail, soloWorkspaceId);
+        SoloWorkspaceVersion version = soloWorkspaceVersionRepository.findByIdAndSoloWorkspace_Id(versionId, soloWorkspaceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solo version not found"));
+        Map<String, Object> response = toVersionSummary(version);
+        response.put("content", version.getContent() == null ? "" : version.getContent());
+        response.put("filePath", version.getFileName());
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> revertToSoloVersion(String currentUserEmail, Long soloWorkspaceId, Long versionId) {
+        User user = getUserByEmail(currentUserEmail);
+        SoloWorkspace workspace = getSoloWorkspaceEntity(currentUserEmail, soloWorkspaceId);
+        SoloWorkspaceVersion version = soloWorkspaceVersionRepository.findByIdAndSoloWorkspace_Id(versionId, soloWorkspaceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solo version not found"));
+
+        workspace.setContent(version.getContent() == null ? "" : version.getContent());
+        soloWorkspaceRepository.save(workspace);
+
+        SoloWorkspaceVersion snapshot = new SoloWorkspaceVersion();
+        snapshot.setSoloWorkspace(workspace);
+        snapshot.setVersionNumber(
+            soloWorkspaceVersionRepository.findTopBySoloWorkspace_IdOrderByVersionNumberDesc(workspace.getId())
+                .map(currentVersion -> currentVersion.getVersionNumber() + 1)
+                .orElse(1)
+        );
+        snapshot.setFileName(workspace.getFileName());
+        snapshot.setContent(workspace.getContent() == null ? "" : workspace.getContent());
+        snapshot.setSavedBy(user);
+        snapshot.setCreatedAt(LocalDateTime.now());
+        snapshot = soloWorkspaceVersionRepository.save(snapshot);
+        pruneSoloVersions(workspace.getId());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("fileId", workspace.getId());
+        response.put("filePath", workspace.getFileName());
+        response.put("content", workspace.getContent());
+        response.put("revertedFromVersion", version.getVersionNumber());
+        response.put("newVersion", snapshot.getVersionNumber());
+        response.put("updatedAt", workspace.getUpdatedAt());
+        response.put("updatedByEmail", workspace.getUser() != null ? workspace.getUser().getEmail() : null);
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> deleteSoloVersion(String currentUserEmail, Long soloWorkspaceId, Long versionId) {
+        getSoloWorkspaceEntity(currentUserEmail, soloWorkspaceId);
+        SoloWorkspaceVersion version = soloWorkspaceVersionRepository.findByIdAndSoloWorkspace_Id(versionId, soloWorkspaceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solo version not found"));
+        soloWorkspaceVersionRepository.delete(version);
+        return Map.of(
+            "deleted", true,
+            "fileId", soloWorkspaceId,
+            "versionId", versionId,
+            "versionNumber", version.getVersionNumber()
+        );
+    }
+
+    private SoloWorkspace getSoloWorkspaceEntity(String currentUserEmail, Long soloWorkspaceId) {
+        User user = getUserByEmail(currentUserEmail);
+        return soloWorkspaceRepository.findByIdAndUser_Id(soloWorkspaceId, user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solo workspace not found"));
+    }
+
+    private void pruneSoloVersions(Long soloWorkspaceId) {
+        List<SoloWorkspaceVersion> versions = soloWorkspaceVersionRepository.findAllBySoloWorkspace_IdOrderByVersionNumberDesc(soloWorkspaceId);
+        if (versions.size() <= 5) {
+            return;
+        }
+
+        for (int i = 5; i < versions.size(); i += 1) {
+            soloWorkspaceVersionRepository.delete(versions.get(i));
+        }
+    }
+
+    private Map<String, Object> toVersionSummary(SoloWorkspaceVersion version) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", version.getId());
+        response.put("versionNumber", version.getVersionNumber());
+        response.put("createdAt", version.getCreatedAt());
+        response.put("authorName", version.getSavedBy() != null ? version.getSavedBy().getName() : null);
+        response.put("authorEmail", version.getSavedBy() != null ? version.getSavedBy().getEmail() : null);
+        response.put("fileId", version.getSoloWorkspace() != null ? version.getSoloWorkspace().getId() : null);
+        response.put("contentPreview", preview(version.getContent()));
+        response.put("filePath", version.getFileName());
+        return response;
     }
 
     private SoloWorkspaceSummary toSummary(SoloWorkspace workspace) {
@@ -132,6 +269,18 @@ public class SoloWorkspaceService {
 
         int end = Math.min(120, normalizedPreview.length());
         return normalizedPreview.substring(0, end);
+    }
+
+    private String preview(String content) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+
+        String normalized = content.replace("\r", "").replace("\n", " ").trim();
+        if (normalized.length() <= 100) {
+            return normalized;
+        }
+        return normalized.substring(0, 100) + "...";
     }
 
     private String normalizeFileName(String rawFileName) {

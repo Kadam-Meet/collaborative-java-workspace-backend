@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/workspaces/solo")
@@ -69,6 +70,50 @@ public class SoloWorkspaceController {
     ) {
         soloWorkspaceService.deleteSoloWorkspace(getEmail(request), soloWorkspaceId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{soloWorkspaceId}/versions")
+    public ResponseEntity<Map<String, Object>> saveVersionSnapshot(
+        @PathVariable Long soloWorkspaceId,
+        @RequestBody SoloWorkspaceRequest soloWorkspaceRequest,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(soloWorkspaceService.saveVersionSnapshot(getEmail(request), soloWorkspaceId, soloWorkspaceRequest));
+    }
+
+    @GetMapping("/{soloWorkspaceId}/versions")
+    public ResponseEntity<List<Map<String, Object>>> listVersions(
+        @PathVariable Long soloWorkspaceId,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(soloWorkspaceService.listSoloVersions(getEmail(request), soloWorkspaceId));
+    }
+
+    @GetMapping("/{soloWorkspaceId}/versions/{versionId}")
+    public ResponseEntity<Map<String, Object>> versionDetail(
+        @PathVariable Long soloWorkspaceId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(soloWorkspaceService.getSoloVersionDetail(getEmail(request), soloWorkspaceId, versionId));
+    }
+
+    @PostMapping("/{soloWorkspaceId}/versions/{versionId}/revert")
+    public ResponseEntity<Map<String, Object>> revertVersion(
+        @PathVariable Long soloWorkspaceId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(soloWorkspaceService.revertToSoloVersion(getEmail(request), soloWorkspaceId, versionId));
+    }
+
+    @DeleteMapping("/{soloWorkspaceId}/versions/{versionId}")
+    public ResponseEntity<Map<String, Object>> deleteVersion(
+        @PathVariable Long soloWorkspaceId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(soloWorkspaceService.deleteSoloVersion(getEmail(request), soloWorkspaceId, versionId));
     }
 
     private String getEmail(HttpServletRequest request) {
