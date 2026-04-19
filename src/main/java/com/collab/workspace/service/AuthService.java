@@ -243,7 +243,7 @@ public class AuthService {
 
 	private String buildPasswordResetLink(String token) {
 		String baseUrl = normalizeFrontendBaseUrl(frontendBaseUrl);
-		return baseUrl + "/reset-password?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+		return baseUrl + "/?resetToken=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
 	}
 
 	private String normalizeFrontendBaseUrl(String raw) {

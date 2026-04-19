@@ -1445,7 +1445,7 @@ public class RoomWorkspaceService {
 
     private String buildInvitationLink(String token) {
         String baseUrl = normalizeFrontendBaseUrl(frontendBaseUrl);
-        return baseUrl + "/invite?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        return baseUrl + "/?inviteToken=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
     }
 
     private String normalizeFrontendBaseUrl(String raw) {
