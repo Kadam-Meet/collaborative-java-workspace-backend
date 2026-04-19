@@ -128,6 +128,9 @@ public class SoloWorkspaceService {
         version.setVersionNumber(nextVersion);
         version.setFileName(workspace.getFileName());
         version.setContent(workspace.getContent() == null ? "" : workspace.getContent());
+        if (request != null && request.getVersionLabel() != null && !request.getVersionLabel().isBlank()) {
+            version.setVersionLabel(request.getVersionLabel().trim());
+        }
         version.setSavedBy(user);
         version.setCreatedAt(LocalDateTime.now());
         version = soloWorkspaceVersionRepository.save(version);
@@ -231,6 +234,9 @@ public class SoloWorkspaceService {
         response.put("fileId", version.getSoloWorkspace() != null ? version.getSoloWorkspace().getId() : null);
         response.put("contentPreview", preview(version.getContent()));
         response.put("filePath", version.getFileName());
+        if (version.getVersionLabel() != null && !version.getVersionLabel().isBlank()) {
+            response.put("versionLabel", version.getVersionLabel());
+        }
         return response;
     }
 

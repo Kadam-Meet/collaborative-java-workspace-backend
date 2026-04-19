@@ -27,6 +27,9 @@ public class SoloWorkspaceVersion {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
+    @Column(name = "version_label", length = 255)
+    private String versionLabel;
+
     @Lob
     @Column(columnDefinition = "TEXT")
     private String content;
@@ -50,6 +53,9 @@ public class SoloWorkspaceVersion {
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }
+
+    public String getVersionLabel() { return versionLabel; }
+    public void setVersionLabel(String versionLabel) { this.versionLabel = versionLabel; }
 
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }

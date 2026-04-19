@@ -4,6 +4,7 @@ public class SoloWorkspaceRequest {
 
     private String fileName;
     private String content;
+    private String versionLabel;
 
     public String getFileName() {
         return fileName;
@@ -19,5 +20,13 @@ public class SoloWorkspaceRequest {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getVersionLabel() {
+        return versionLabel;
+    }
+
+    public void setVersionLabel(String versionLabel) {
+        this.versionLabel = versionLabel;
     }
 }
